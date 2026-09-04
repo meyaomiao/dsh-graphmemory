@@ -13,6 +13,7 @@ import { normalizeExtractionDrainPolicy, splitExtractionContent, } from "./src/e
 import { Recaller } from "./src/recaller/recall.js";
 import { assembleContext } from "./src/format/assemble.js";
 import { selectDshRollingCompactionRange } from "./src/format/dsh-compaction.js";
+import { snapshotSessionEvents } from "./src/format/dsh-session.js";
 import { contributePromptDataContext } from "./src/format/prompt-data.js";
 import { createEmbedFn } from "./src/engine/embed.js";
 import { computeGlobalPageRank, invalidateGraphCache } from "./src/graph/pagerank.js";
@@ -517,9 +518,13 @@ export function apply(ctx, input = {}) {
     }
     function backfill(agent) {
         const id = agent?.id ?? agent?.session?.id;
-        if (id === undefined || !Array.isArray(agent?.session?.events))
+        if (id === undefined)
             return;
-        for (const event of agent.session.events)
+        const events = snapshotSessionEvents(agent?.session);
+        // Skip when the host exposes neither 0.1.2 readers nor a legacy events array.
+        if (events === undefined)
+            return;
+        for (const event of events)
             ingest(id, event);
     }
     // Graph Memory owns the rolling retention policy while DSH's public

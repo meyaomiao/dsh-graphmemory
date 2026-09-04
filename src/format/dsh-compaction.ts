@@ -7,17 +7,14 @@
  * validation.
  */
 
-interface DshSurfaceEvent {
-  type?: string;
-  data?: {
-    source?: { kind?: string };
-  };
-}
+import {
+  canReadSessionEvents,
+  eventAtSeq,
+  type DshSessionLike,
+  type DshSurfaceEvent,
+} from "./dsh-session.ts";
 
-interface DshSurfaceSession {
-  events?: Array<DshSurfaceEvent | undefined>;
-  surface?: { nodes?: number[] };
-}
+export type { DshSurfaceEvent };
 
 export interface DshCompactionRange {
   start: number;
@@ -31,13 +28,21 @@ export function isDshUserTurn(event: DshSurfaceEvent | undefined): boolean {
   return event?.type === "user/message" && event.data?.source?.kind === "user";
 }
 
+function asSeqNumber(value: unknown): number | undefined {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
+}
+
 /**
  * Select the oldest complete surface prefix while retaining the newest N user
  * turns verbatim. Plugin-owned user messages (prompt snapshots, skill catalogs,
  * compaction checkpoints) do not count as user turns.
+ *
+ * Surface node values are durable seqs. Lookups use `eventAt` / `snapshotEvents`
+ * on DSH 0.1.2 and the sparse `events` array on 0.1.1.
  */
 export function selectDshRollingCompactionRange(
-  session: DshSurfaceSession,
+  session: DshSessionLike,
   freshTurnCount: number,
   incomingUserTurns = 0,
 ): DshCompactionRange | null {
@@ -49,12 +54,11 @@ export function selectDshRollingCompactionRange(
   }
 
   const surface = session.surface?.nodes;
-  const events = session.events;
-  if (!Array.isArray(surface) || !Array.isArray(events) || surface.length < 2) return null;
+  if (!Array.isArray(surface) || surface.length < 2 || !canReadSessionEvents(session)) return null;
 
   const userPositions: number[] = [];
   for (let index = 0; index < surface.length; index += 1) {
-    if (isDshUserTurn(events[surface[index]])) userPositions.push(index);
+    if (isDshUserTurn(eventAtSeq(session, surface[index]))) userPositions.push(index);
   }
   if (userPositions.length + incomingUserTurns <= freshTurnCount) return null;
 
@@ -63,7 +67,9 @@ export function selectDshRollingCompactionRange(
     ? surface.length
     : userPositions[userPositions.length - retainOnSurface];
   if (keepFromPosition <= 0) return null;
-  const shadowedSeqs = surface.slice(0, keepFromPosition);
+  const shadowedSeqs = surface.slice(0, keepFromPosition)
+    .map(asSeqNumber)
+    .filter((seq): seq is number => seq !== undefined);
   if (!shadowedSeqs.length) return null;
 
   return {

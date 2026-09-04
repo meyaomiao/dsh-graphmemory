@@ -35,6 +35,7 @@ import {
 import { Recaller } from "./src/recaller/recall.ts";
 import { assembleContext } from "./src/format/assemble.ts";
 import { selectDshRollingCompactionRange } from "./src/format/dsh-compaction.ts";
+import { snapshotSessionEvents } from "./src/format/dsh-session.ts";
 import { contributePromptDataContext } from "./src/format/prompt-data.ts";
 import { createEmbedFn } from "./src/engine/embed.ts";
 import { computeGlobalPageRank, invalidateGraphCache } from "./src/graph/pagerank.ts";
@@ -624,8 +625,11 @@ export function apply(ctx: DshContext, input: Config = {}): void {
 
   function backfill(agent: any): void {
     const id = agent?.id ?? agent?.session?.id;
-    if (id === undefined || !Array.isArray(agent?.session?.events)) return;
-    for (const event of agent.session.events) ingest(id, event);
+    if (id === undefined) return;
+    const events = snapshotSessionEvents(agent?.session);
+    // Skip when the host exposes neither 0.1.2 readers nor a legacy events array.
+    if (events === undefined) return;
+    for (const event of events) ingest(id, event);
   }
 
   // Graph Memory owns the rolling retention policy while DSH's public

@@ -6,14 +6,22 @@
  * host compaction service owns the actual summary transaction and tool-pairing
  * validation.
  */
+import { canReadSessionEvents, eventAtSeq, } from "./dsh-session.js";
 /** Whether one surface event is a real user prompt that starts a logical turn. */
 export function isDshUserTurn(event) {
     return event?.type === "user/message" && event.data?.source?.kind === "user";
+}
+function asSeqNumber(value) {
+    const numeric = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(numeric) ? numeric : undefined;
 }
 /**
  * Select the oldest complete surface prefix while retaining the newest N user
  * turns verbatim. Plugin-owned user messages (prompt snapshots, skill catalogs,
  * compaction checkpoints) do not count as user turns.
+ *
+ * Surface node values are durable seqs. Lookups use `eventAt` / `snapshotEvents`
+ * on DSH 0.1.2 and the sparse `events` array on 0.1.1.
  */
 export function selectDshRollingCompactionRange(session, freshTurnCount, incomingUserTurns = 0) {
     if (!Number.isInteger(freshTurnCount) || freshTurnCount < 1) {
@@ -23,12 +31,11 @@ export function selectDshRollingCompactionRange(session, freshTurnCount, incomin
         throw new TypeError(`incomingUserTurns must be a non-negative integer, received ${incomingUserTurns}`);
     }
     const surface = session.surface?.nodes;
-    const events = session.events;
-    if (!Array.isArray(surface) || !Array.isArray(events) || surface.length < 2)
+    if (!Array.isArray(surface) || surface.length < 2 || !canReadSessionEvents(session))
         return null;
     const userPositions = [];
     for (let index = 0; index < surface.length; index += 1) {
-        if (isDshUserTurn(events[surface[index]]))
+        if (isDshUserTurn(eventAtSeq(session, surface[index])))
             userPositions.push(index);
     }
     if (userPositions.length + incomingUserTurns <= freshTurnCount)
@@ -39,7 +46,9 @@ export function selectDshRollingCompactionRange(session, freshTurnCount, incomin
         : userPositions[userPositions.length - retainOnSurface];
     if (keepFromPosition <= 0)
         return null;
-    const shadowedSeqs = surface.slice(0, keepFromPosition);
+    const shadowedSeqs = surface.slice(0, keepFromPosition)
+        .map(asSeqNumber)
+        .filter((seq) => seq !== undefined);
     if (!shadowedSeqs.length)
         return null;
     return {
