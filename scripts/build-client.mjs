@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises';
 await mkdir('dist', { recursive: true });
 
 const banner = [
-  'window.__ModuleLoader__.load({ id: "graph-memory", factory: (require) => {',
+  'window.__ModuleLoader__.load({ id: "dsh-graphmemory", factory: (require) => {',
   'var module = { exports: {} };',
   'var exports = module.exports;',
 ].join('\n');

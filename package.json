@@ -1,5 +1,5 @@
 {
-  "name": "graph-memory",
+  "name": "dsh-graphmemory",
   "version": "1.6.0-beta.12",
   "description": "Knowledge graph memory for DeepSeek Harness and OpenClaw \u2014 cross-session recall, PageRank, communities, and vector search",
   "keywords": [

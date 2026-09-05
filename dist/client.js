@@ -1,4 +1,4 @@
-window.__ModuleLoader__.load({ id: "graph-memory", factory: (require) => {
+window.__ModuleLoader__.load({ id: "dsh-graphmemory", factory: (require) => {
 var module = { exports: {} };
 var exports = module.exports;
 "use strict";
