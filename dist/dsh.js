@@ -9,6 +9,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { openDb } from "./src/store/db.js";
 import { allActiveNodes, findByName, getBySession, getStats, getVectorStats, getUnextracted, getExtractionStats, getPendingSessionIds, markMessagesExtracted, quarantineMessages, recordExtractionFailure, requeueQuarantined, saveMessageOnce, updateNode, upsertEdge, upsertNode, } from "./src/store/store.js";
 import { Extractor, normalizeExtractionContent } from "./src/extractor/extract.js";
+import { SqliteGraphSnapshotStore } from "./pro/sqlite.js";
+import { API_PREFIX, createDashboardRouter } from "./dashboard/server.js";
+import { buildRuntimeStatus } from "./dashboard/status.js";
 import { normalizeExtractionDrainPolicy, splitExtractionContent, } from "./src/extractor/drain-policy.js";
 import { Recaller } from "./src/recaller/recall.js";
 import { assembleContext } from "./src/format/assemble.js";
@@ -21,7 +24,7 @@ import { detectCommunities } from "./src/graph/community.js";
 import { DEFAULT_CONFIG } from "./src/types.js";
 import { messageRetentionPolicyRevision, normalizeMessageRetentionPolicy, runMessageRetention, } from "./src/store/retention.js";
 export const name = "graph-memory-dsh";
-export const inject = ["tools", "llm", "systemPrompt", "agentLoop", "agents", "sessions", "credentials"];
+export const inject = ["tools", "llm", "systemPrompt", "agentLoop", "agents", "sessions", "credentials", "webServer"];
 const HOST = "dsh";
 const PLUGIN = "graph-memory";
 function sessionKey(id) {
@@ -737,6 +740,50 @@ export function apply(ctx, input = {}) {
             return `Graph Memory active (DSH native)\nStore: ${config.dbPath}\nNodes: ${stats.totalNodes}\nEdges: ${stats.totalEdges}\nMessages: ${messageCount}\nExtraction: ${extractionEnabled ? "enabled" : "disabled"} (pending=${extraction.pending}, succeeded=${extraction.succeeded}, quarantined=${extraction.quarantined})\nExtraction routes: ${extractionRoutes}\nExtraction drain: maxChars=${extractionDrain.maxBatchChars}, maxMessages=${extractionDrain.maxBatchMessages}, retries=${extractionDrain.maxRetries}, timeoutMs=${extractionDrain.streamTimeoutMs}\nRecall: ${recallEnabled ? "enabled" : "disabled"}\nEmbedding: ${embeddingState}${embeddingModel}\nVectors: ${vectors.count}/${stats.totalNodes}${vectors.dimensions.length ? ` (${vectors.dimensions.join(", ")} dimensions)` : ""}\nMessage retention: keep=${messageRetention.keep}, recentTurns=${messageRetention.recentTurns}, retentionDays=${messageRetention.retentionDays}, batchSize=${messageRetention.batchSize}, dryRun=${messageRetention.dryRun}, revision=${retentionRevision}\nRetention GC: runs=${retentionMetrics.runs}, dryRuns=${retentionMetrics.dryRuns}, selected=${retentionMetrics.selectedRows}, deleted=${retentionMetrics.deletedRows}, estimatedDeletedBytes=${retentionMetrics.deletedBytes}\nRolling compaction: attached=${compactionMetrics.attached}, selected=${compactionMetrics.selected}, succeeded=${compactionMetrics.succeeded}, unavailable=${compactionMetrics.unavailable}, failed=${compactionMetrics.failed}`;
         },
     });
+    // Dashboard Web UI: loopback-only read-only HTTP API feeding the
+    // 记忆图谱 better-sidebar tab (client bundle: dist/client.js).
+    // webServer is inject-declared but the memory engine never depends on
+    // it — when the service is absent (non-HTTP hosts) this degrades to a
+    // no-op and only the tab goes missing.
+    const webServer = ctx.webServer;
+    if (webServer && typeof webServer.register === "function") {
+        const dashboardGraph = new SqliteGraphSnapshotStore({ dbPath: config.dbPath });
+        const statusSource = {
+            getStatus: () => buildRuntimeStatus({
+                db,
+                dbPath: config.dbPath,
+                contextCompactionEnabled,
+                freshTurnCount,
+                embeddingState: () => embeddingState,
+                embeddingModel: input.embedding?.model ?? null,
+                routes: () => configuredExtractionRoutes().map((route) => `${route.provider}/${route.model}`),
+                compactionMetrics: () => compactionMetrics,
+                drain: {
+                    maxBatchChars: extractionDrain.maxBatchChars,
+                    maxBatchMessages: extractionDrain.maxBatchMessages,
+                    maxRetries: extractionDrain.maxRetries,
+                    streamTimeoutMs: extractionDrain.streamTimeoutMs,
+                },
+                retention: {
+                    keep: messageRetention.keep,
+                    revision: messageRetentionPolicyRevision(messageRetention),
+                },
+            }),
+        };
+        const dashboardHandler = createDashboardRouter({ graph: dashboardGraph, status: statusSource });
+        ctx.effect(() => {
+            const dispose = webServer.register({
+                kind: "prefix",
+                path: API_PREFIX,
+                handler: (req, res) => dashboardHandler(req, res),
+            });
+            return () => {
+                if (typeof dispose === "function")
+                    dispose();
+                dashboardGraph.close();
+            };
+        }, "graph-memory: dashboard http api");
+    }
     ctx.tools.register({
         name: "gm_search",
         description: "Search long-term knowledge graph memory from earlier conversations.",

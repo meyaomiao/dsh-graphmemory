@@ -1,7 +1,7 @@
 {
   "name": "graph-memory",
   "version": "1.6.0-beta.12",
-  "description": "Knowledge graph memory for DeepSeek Harness and OpenClaw — cross-session recall, PageRank, communities, and vector search",
+  "description": "Knowledge graph memory for DeepSeek Harness and OpenClaw \u2014 cross-session recall, PageRank, communities, and vector search",
   "keywords": [
     "deepseek-harness",
     "cordis",
@@ -28,7 +28,8 @@
     "./dsh": "./dist/dsh.js",
     "./pro": "./dist/pro/index.js",
     "./pro/dsh": "./dist/pro/dsh.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./client": "./dist/client.js"
   },
   "files": [
     "dist",
@@ -44,7 +45,8 @@
     "openclaw.plugin.json",
     "README.md",
     "README_CN.md",
-    "LICENSE"
+    "LICENSE",
+    "dashboard"
   ],
   "scripts": {
     "build": "tsc",
@@ -52,7 +54,8 @@
     "prepack": "npm run build",
     "verify:package": "node scripts/verify-package.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:client": "node scripts/build-client.mjs"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.48"
@@ -62,7 +65,8 @@
     "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.8",
     "@types/node": "^22.13.0",
     "typescript": "^5.4.0",
-    "vitest": "^1.4.0"
+    "vitest": "^1.4.0",
+    "esbuild": "^0.28.2"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4",
@@ -98,6 +102,13 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "dsh-better-sidebar"
+      ],
+      "platform": "web"
     }
-  }
+  },
+  "prepack": "npm run build && npm run build:client"
 }
