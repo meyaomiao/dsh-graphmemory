@@ -20,7 +20,9 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     const sidebar = ctx.betterSidebar;
     if (!sidebar) {
-      ctx.logger?.warn?.("[graph-memory] better-sidebar 未安装，记忆图谱页签未注册");
+      ctx.logger?.warn?.(
+        "[graph-memory] better-sidebar 未安装，页签未注册；独立看板仍可访问 /graph-memory/app",
+      );
       return;
     }
     const removeStyles = installStyles();

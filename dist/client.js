@@ -1086,7 +1086,9 @@ function apply(ctx) {
   ctx.effect(() => {
     const sidebar = ctx.betterSidebar;
     if (!sidebar) {
-      ctx.logger?.warn?.("[graph-memory] better-sidebar \u672A\u5B89\u88C5\uFF0C\u8BB0\u5FC6\u56FE\u8C31\u9875\u7B7E\u672A\u6CE8\u518C");
+      ctx.logger?.warn?.(
+        "[graph-memory] better-sidebar \u672A\u5B89\u88C5\uFF0C\u9875\u7B7E\u672A\u6CE8\u518C\uFF1B\u72EC\u7ACB\u770B\u677F\u4ECD\u53EF\u8BBF\u95EE /graph-memory/app"
+      );
       return;
     }
     const removeStyles = installStyles();

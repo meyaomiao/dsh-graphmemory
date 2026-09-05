@@ -7,6 +7,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { readFile } from "node:fs/promises";
 import { openDb } from "./src/store/db.ts";
 import {
   allEdges,
@@ -29,7 +30,7 @@ import {
 } from "./src/store/store.ts";
 import { Extractor, normalizeExtractionContent } from "./src/extractor/extract.ts";
 import { SqliteGraphSnapshotStore } from "./pro/sqlite.ts";
-import { API_PREFIX, createDashboardRouter } from "./dashboard/server.ts";
+import { API_PREFIX, APP_PATH, APP_PREFIX, createDashboardRouter } from "./dashboard/server.ts";
 import { buildRuntimeStatus } from "./dashboard/status.ts";
 import {
   normalizeExtractionDrainPolicy,
@@ -897,13 +898,21 @@ export function apply(ctx: DshContext, input: Config = {}): void {
         },
       }),
     };
-    const dashboardHandler = createDashboardRouter({ graph: dashboardGraph, status: statusSource });
+    const dashboardHandler = createDashboardRouter({
+      graph: dashboardGraph,
+      status: statusSource,
+      // 独立 UI 静态资源：dist/standalone.js（与 dist/dsh.js 同目录）。
+      readAsset: (name) => readFile(new URL(`./${name}`, import.meta.url), "utf8"),
+    });
     ctx.effect(() => {
       const dispose = webServer.register({
         kind: "prefix",
-        path: API_PREFIX,
+        path: APP_PREFIX,
         handler: (req: IncomingMessage, res: ServerResponse) => dashboardHandler(req, res),
       });
+      ctx.logger.info(
+        `[graph-memory] dashboard UI available at ${APP_PATH} (standalone) and ${API_PREFIX} (json api)`,
+      );
       return () => {
         if (typeof dispose === "function") dispose();
         dashboardGraph.close();

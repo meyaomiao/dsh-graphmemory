@@ -1,8 +1,12 @@
 import { build } from 'esbuild';
 import { mkdir } from 'node:fs/promises';
 
-// Client bundle for the 记忆图谱 tab. DSH loads it through
-// window.__ModuleLoader__ with an id matching this package name.
+// Two client artifacts:
+// 1. dist/client.js       — better-sidebar tab bundle (ModuleLoader CJS,
+//                           id must match the package name; react external).
+// 2. dist/standalone.js   — self-contained page bundle served by the host at
+//                           /graph-memory/app (react bundled in, no platform
+//                           plugin required).
 await mkdir('dist', { recursive: true });
 
 const banner = [
@@ -26,4 +30,16 @@ await build({
   footer: { js: footer },
 });
 
-console.log('graph-memory: dist/client.js 构建完成');
+await build({
+  entryPoints: ['dashboard/standalone.ts'],
+  outfile: 'dist/standalone.js',
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  target: ['es2022'],
+  jsx: 'automatic',
+  sourcemap: true,
+  minify: true,
+});
+
+console.log('graph-memory: dist/client.js + dist/standalone.js 构建完成');

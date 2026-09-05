@@ -1,11 +1,15 @@
 /**
- * Dashboard HTTP API: loopback-only, read-only routes served in-process.
+ * Dashboard HTTP surface: loopback-only, read-only routes served in-process.
  *
- * Routes (all GET, JSON):
- *   /snapshot          graph nodes+edges projection (bounded)
- *   /stats             totals by type/community
- *   /nodes/:id         single node detail with bounded content
- *   /status            runtime overview for the dashboard overview section
+ * API routes (GET, JSON) under /graph-memory/api:
+ *   /api/snapshot      graph nodes+edges projection (bounded)
+ *   /api/stats         totals by type/community
+ *   /api/nodes/:id     single node detail with bounded content
+ *   /api/status        runtime overview for the dashboard overview section
+ *
+ * Standalone UI (works without better-sidebar):
+ *   /app               self-contained HTML page mounting the React dashboard
+ *   /standalone.js     the bundled dashboard app (react included)
  *
  * The browser never touches SQLite; this router runs inside the DSH host
  * process and reuses the same read-only projections as the Pro Lite API,
@@ -20,7 +24,10 @@ import type {
   NodeType,
 } from "./types.ts";
 
-export const API_PREFIX = "/graph-memory/api";
+export const APP_PREFIX = "/graph-memory";
+export const API_PREFIX = `${APP_PREFIX}/api`;
+export const APP_PATH = `${APP_PREFIX}/app`;
+export const STANDALONE_JS_PATH = `${APP_PREFIX}/standalone.js`;
 const SNAPSHOT_LIMIT = 200;
 const STATS_LIMIT = 1000;
 
@@ -33,10 +40,29 @@ export interface DashboardStatusSource {
   getStatus(): GraphMemoryStatus;
 }
 
+/** 读取独立 UI 静态资源（宿主实现为从 dist/ 读取；测试可注入桩）。 */
+export type DashboardAssetReader = (name: string) => Promise<string>;
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
 }
+
+const STANDALONE_HTML = (scriptPath: string): string => `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>记忆图谱 · Graph Memory</title>
+<style>html, body { margin: 0; padding: 0; height: 100%; background: #fff; }</style>
+</head>
+<body>
+<div id="root" style="height: 100vh"></div>
+<script src="${scriptPath}"></script>
+</body>
+</html>
+`;
+
 
 /** 仅允许 DSH 本地浏览器访问，拒绝局域网直连。 */
 export function isLoopback(req: IncomingMessage): boolean {
@@ -92,7 +118,7 @@ function makeStats(snapshot: GraphSnapshot): Record<string, unknown> {
 
 function relativePath(url: URL): string {
   const raw = url.pathname;
-  const stripped = raw.startsWith(API_PREFIX) ? raw.slice(API_PREFIX.length) : raw;
+  const stripped = raw.startsWith(APP_PREFIX) ? raw.slice(APP_PREFIX.length) : raw;
   return stripped.replace(/\/+$/, "") || "/";
 }
 
@@ -109,9 +135,14 @@ function decodeNodeId(value: string): string {
 export interface DashboardRouterDeps {
   graph: DashboardGraphSource;
   status: DashboardStatusSource;
+  /** 独立 UI 静态资源读取器（宿主从 dist/ 读取；无 better-sidebar 时看板仍可用）。 */
+  readAsset?: DashboardAssetReader;
 }
 
-/** 创建只读仪表盘 API，路由收到的是完整 req.url。 */
+/**
+ * 创建只读仪表盘路由，收到的 req.url 是完整路径。
+ * 同一前缀 /graph-memory 同时服务 JSON API 与独立 UI 页面。
+ */
 export function createDashboardRouter(
   deps: DashboardRouterDeps,
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
@@ -130,22 +161,38 @@ export function createDashboardRouter(
     }
 
     try {
-      if (path === "/snapshot") {
+      if (path === "/app" || path === "/") {
+        const html = STANDALONE_HTML(`${APP_PREFIX}/standalone.js`);
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(html);
+        return;
+      }
+      if (path === "/standalone.js") {
+        if (!deps.readAsset) {
+          sendJson(res, 404, { ok: false, error: "独立 UI 资源未配置" });
+          return;
+        }
+        const js = await deps.readAsset("standalone.js");
+        res.writeHead(200, { "content-type": "application/javascript; charset=utf-8" });
+        res.end(js);
+        return;
+      }
+      if (path === "/api/snapshot") {
         const snapshot = deps.graph.getSnapshot(parseSnapshotRequest(url));
         sendJson(res, 200, { ok: true, snapshot });
         return;
       }
-      if (path === "/stats") {
+      if (path === "/api/stats") {
         const snapshot = deps.graph.getSnapshot({ maxNodes: STATS_LIMIT });
         sendJson(res, 200, { ok: true, stats: makeStats(snapshot) });
         return;
       }
-      if (path === "/status") {
+      if (path === "/api/status") {
         sendJson(res, 200, { ok: true, status: deps.status.getStatus() });
         return;
       }
-      if (path.startsWith("/nodes/")) {
-        const id = decodeNodeId(path.slice("/nodes/".length));
+      if (path.startsWith("/api/nodes/")) {
+        const id = decodeNodeId(path.slice("/api/nodes/".length));
         const detail = deps.graph.getNodeDetail(id);
         if (!detail) {
           sendJson(res, 404, { ok: false, error: "节点不存在或已归档" });

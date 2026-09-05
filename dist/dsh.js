@@ -6,11 +6,12 @@
  * Cordis lifecycle cleanup. The legacy OpenClaw entry remains index.ts.
  */
 import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { openDb } from "./src/store/db.js";
 import { allActiveNodes, findByName, getBySession, getStats, getVectorStats, getUnextracted, getExtractionStats, getPendingSessionIds, markMessagesExtracted, quarantineMessages, recordExtractionFailure, requeueQuarantined, saveMessageOnce, updateNode, upsertEdge, upsertNode, } from "./src/store/store.js";
 import { Extractor, normalizeExtractionContent } from "./src/extractor/extract.js";
 import { SqliteGraphSnapshotStore } from "./pro/sqlite.js";
-import { API_PREFIX, createDashboardRouter } from "./dashboard/server.js";
+import { API_PREFIX, APP_PATH, APP_PREFIX, createDashboardRouter } from "./dashboard/server.js";
 import { buildRuntimeStatus } from "./dashboard/status.js";
 import { normalizeExtractionDrainPolicy, splitExtractionContent, } from "./src/extractor/drain-policy.js";
 import { Recaller } from "./src/recaller/recall.js";
@@ -770,13 +771,19 @@ export function apply(ctx, input = {}) {
                 },
             }),
         };
-        const dashboardHandler = createDashboardRouter({ graph: dashboardGraph, status: statusSource });
+        const dashboardHandler = createDashboardRouter({
+            graph: dashboardGraph,
+            status: statusSource,
+            // 独立 UI 静态资源：dist/standalone.js（与 dist/dsh.js 同目录）。
+            readAsset: (name) => readFile(new URL(`./${name}`, import.meta.url), "utf8"),
+        });
         ctx.effect(() => {
             const dispose = webServer.register({
                 kind: "prefix",
-                path: API_PREFIX,
+                path: APP_PREFIX,
                 handler: (req, res) => dashboardHandler(req, res),
             });
+            ctx.logger.info(`[graph-memory] dashboard UI available at ${APP_PATH} (standalone) and ${API_PREFIX} (json api)`);
             return () => {
                 if (typeof dispose === "function")
                     dispose();

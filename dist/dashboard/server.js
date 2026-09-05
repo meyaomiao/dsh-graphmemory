@@ -1,10 +1,27 @@
-export const API_PREFIX = "/graph-memory/api";
+export const APP_PREFIX = "/graph-memory";
+export const API_PREFIX = `${APP_PREFIX}/api`;
+export const APP_PATH = `${APP_PREFIX}/app`;
+export const STANDALONE_JS_PATH = `${APP_PREFIX}/standalone.js`;
 const SNAPSHOT_LIMIT = 200;
 const STATS_LIMIT = 1000;
 function sendJson(res, status, body) {
     res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
     res.end(JSON.stringify(body));
 }
+const STANDALONE_HTML = (scriptPath) => `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>记忆图谱 · Graph Memory</title>
+<style>html, body { margin: 0; padding: 0; height: 100%; background: #fff; }</style>
+</head>
+<body>
+<div id="root" style="height: 100vh"></div>
+<script src="${scriptPath}"></script>
+</body>
+</html>
+`;
 /** 仅允许 DSH 本地浏览器访问，拒绝局域网直连。 */
 export function isLoopback(req) {
     const remote = req.socket?.remoteAddress ?? "";
@@ -59,7 +76,7 @@ function makeStats(snapshot) {
 }
 function relativePath(url) {
     const raw = url.pathname;
-    const stripped = raw.startsWith(API_PREFIX) ? raw.slice(API_PREFIX.length) : raw;
+    const stripped = raw.startsWith(APP_PREFIX) ? raw.slice(APP_PREFIX.length) : raw;
     return stripped.replace(/\/+$/, "") || "/";
 }
 function decodeNodeId(value) {
@@ -73,7 +90,10 @@ function decodeNodeId(value) {
         throw Object.assign(new Error("节点 id 无效"), { status: 400 });
     }
 }
-/** 创建只读仪表盘 API，路由收到的是完整 req.url。 */
+/**
+ * 创建只读仪表盘路由，收到的 req.url 是完整路径。
+ * 同一前缀 /graph-memory 同时服务 JSON API 与独立 UI 页面。
+ */
 export function createDashboardRouter(deps) {
     return async (req, res) => {
         if (!isLoopback(req)) {
@@ -88,22 +108,38 @@ export function createDashboardRouter(deps) {
             return;
         }
         try {
-            if (path === "/snapshot") {
+            if (path === "/app" || path === "/") {
+                const html = STANDALONE_HTML(`${APP_PREFIX}/standalone.js`);
+                res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+                res.end(html);
+                return;
+            }
+            if (path === "/standalone.js") {
+                if (!deps.readAsset) {
+                    sendJson(res, 404, { ok: false, error: "独立 UI 资源未配置" });
+                    return;
+                }
+                const js = await deps.readAsset("standalone.js");
+                res.writeHead(200, { "content-type": "application/javascript; charset=utf-8" });
+                res.end(js);
+                return;
+            }
+            if (path === "/api/snapshot") {
                 const snapshot = deps.graph.getSnapshot(parseSnapshotRequest(url));
                 sendJson(res, 200, { ok: true, snapshot });
                 return;
             }
-            if (path === "/stats") {
+            if (path === "/api/stats") {
                 const snapshot = deps.graph.getSnapshot({ maxNodes: STATS_LIMIT });
                 sendJson(res, 200, { ok: true, stats: makeStats(snapshot) });
                 return;
             }
-            if (path === "/status") {
+            if (path === "/api/status") {
                 sendJson(res, 200, { ok: true, status: deps.status.getStatus() });
                 return;
             }
-            if (path.startsWith("/nodes/")) {
-                const id = decodeNodeId(path.slice("/nodes/".length));
+            if (path.startsWith("/api/nodes/")) {
+                const id = decodeNodeId(path.slice("/api/nodes/".length));
                 const detail = deps.graph.getNodeDetail(id);
                 if (!detail) {
                     sendJson(res, 404, { ok: false, error: "节点不存在或已归档" });

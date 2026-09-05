@@ -1,7 +1,7 @@
 {
   "name": "dsh-graphmemory",
   "version": "1.6.0-beta.12",
-  "description": "Knowledge graph memory for DeepSeek Harness and OpenClaw \u2014 cross-session recall, PageRank, communities, and vector search",
+  "description": "Knowledge graph memory for DeepSeek Harness and OpenClaw — cross-session recall, PageRank, communities, and vector search",
   "keywords": [
     "deepseek-harness",
     "cordis",
@@ -64,9 +64,11 @@
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.8",
     "@types/node": "^22.13.0",
+    "esbuild": "^0.28.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^5.4.0",
-    "vitest": "^1.4.0",
-    "esbuild": "^0.28.2"
+    "vitest": "^1.4.0"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4",

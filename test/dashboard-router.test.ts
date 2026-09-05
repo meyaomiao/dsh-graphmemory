@@ -11,7 +11,11 @@ function response(): { value: Promise<{ status: number; body: any }>; target: an
   const value = new Promise<{ status: number; body: any }>((next) => { resolve = next; });
   const target = {
     writeHead(status: number) { this.status = status; },
-    end(body: string) { resolve({ status: this.status, body: JSON.parse(body) }); },
+    end(body: string) {
+      let parsed: any = body;
+      try { parsed = JSON.parse(body); } catch { /* html/js bodies stay raw */ }
+      resolve({ status: this.status, body: parsed });
+    },
     status: 500,
   };
   return { value, target };
@@ -53,8 +57,40 @@ function deps() {
       getNodeDetail: (id: string) => (id === "n-1" ? { ...snapshot.nodes[0], content: "正文", contentTruncated: false } : null),
     },
     status: { getStatus: () => statusPayload },
+    readAsset: async (name: string) => `/* asset:${name} */`,
   };
 }
+
+describe("standalone UI routes (no better-sidebar required)", () => {
+  it("serves the app page and bundle asset", async () => {
+    const router = createDashboardRouter(deps());
+
+    const app = response();
+    await router(request(`/graph-memory/app`), app.target);
+    const appBody = await app.value;
+    expect(appBody.status).toBe(200);
+    expect(String(appBody.body)).toContain('id="root"');
+    expect(String(appBody.body)).toContain("/graph-memory/standalone.js");
+
+    const root = response();
+    await router(request(`/graph-memory/`), root.target);
+    expect((await root.value).status).toBe(200);
+
+    const js = response();
+    await router(request(`/graph-memory/standalone.js`), js.target);
+    const jsBody = await js.value;
+    expect(jsBody.status).toBe(200);
+    expect(jsBody.body).toBe("/* asset:standalone.js */");
+  });
+
+  it("404s standalone asset when no asset reader is configured", async () => {
+    const { readAsset: _omit, ...rest } = deps();
+    const router = createDashboardRouter(rest);
+    const js = response();
+    await router(request(`/graph-memory/standalone.js`), js.target);
+    expect((await js.value).status).toBe(404);
+  });
+});
 
 describe("dashboard router", () => {
   it("guards loopback, method, and serves status/snapshot/stats/nodes", async () => {
