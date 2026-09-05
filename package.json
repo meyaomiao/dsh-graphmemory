@@ -21,15 +21,16 @@
   "engines": {
     "node": ">=22.13.0"
   },
-  "main": "dist/index.js",
+  "main": "./dist/dsh.js",
   "type": "module",
   "exports": {
-    ".": "./dist/index.js",
+    ".": "./dist/dsh.js",
     "./dsh": "./dist/dsh.js",
     "./pro": "./dist/pro/index.js",
     "./pro/dsh": "./dist/pro/dsh.js",
     "./package.json": "./package.json",
-    "./client": "./dist/client.js"
+    "./client": "./dist/client.js",
+    "./openclaw": "./dist/index.js"
   },
   "files": [
     "dist",

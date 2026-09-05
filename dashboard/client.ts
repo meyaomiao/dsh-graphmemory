@@ -1,9 +1,12 @@
 /**
  * Client half: registers the 记忆图谱 tab on better-sidebar.
  *
- * betterSidebar is an OPTIONAL peer (inject-declared; undefined when the
- * platform plugin is absent) — the memory engine must keep working without
- * the UI, so apply() degrades to a no-op instead of failing. Graph data is
+ * Module-level inject MUST be the Cordis *service* name `betterSidebar`
+ * (not the package id `dsh-better-sidebar`). Accessing ctx.betterSidebar
+ * without that declaration throws `cannot get property "betterSidebar"
+ * without inject` and the tab never registers. When the platform plugin
+ * is absent the property is undefined and apply() degrades to a no-op;
+ * the standalone page at /graph-memory/app still works. Graph data is
  * fetched from this plugin's loopback-only host API (/graph-memory/api);
  * the browser never reads SQLite directly.
  */
@@ -12,9 +15,9 @@ import type { ClientContext } from "./types.ts";
 import { GraphMemoryApp } from "./ui/app.tsx";
 import { installStyles } from "./ui/styles.ts";
 
-export const name = "graph-memory-dashboard";
+const name = "graph-memory-dashboard";
 
-const inject = ["dsh-better-sidebar"];
+const inject = ["betterSidebar"];
 
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
@@ -40,3 +43,5 @@ export function apply(ctx: ClientContext): void {
     };
   }, "graph-memory: register dashboard tab");
 }
+
+export { inject, name };

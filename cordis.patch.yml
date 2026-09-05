@@ -1,6 +1,6 @@
 - insert:
     - id: graph-memory
-      name: 'dsh-graphmemory/dsh'
+      name: dsh-graphmemory
       config:
         dbPath: !!js dshHomePath('graph-memory/graph-memory.db')
         extractionEnabled: true

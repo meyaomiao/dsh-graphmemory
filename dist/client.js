@@ -24,6 +24,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var client_exports = {};
 __export(client_exports, {
   apply: () => apply,
+  inject: () => inject,
   name: () => name
 });
 module.exports = __toCommonJS(client_exports);
@@ -1082,6 +1083,7 @@ function installStyles() {
 
 // dashboard/client.ts
 var name = "graph-memory-dashboard";
+var inject = ["betterSidebar"];
 function apply(ctx) {
   ctx.effect(() => {
     const sidebar = ctx.betterSidebar;
