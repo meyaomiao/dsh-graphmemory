@@ -331,7 +331,7 @@ export class Extractor {
           e.to = normalizeName(e.to);
           return correctEdgeType(e, nameToType);
         })
-        .filter((e: any) => e !== null);
+        .filter((e: any): e is NonNullable<typeof e> => e !== null);
 
       return { nodes, edges };
     } catch (err) {
@@ -364,7 +364,7 @@ export class Extractor {
           e.to = normalizeName(e.to);
           return correctEdgeType(e, nameToType);
         })
-        .filter((e: any) => e !== null);
+        .filter((e: any): e is NonNullable<typeof e> => e !== null);
 
       return {
         promotedSkills,
