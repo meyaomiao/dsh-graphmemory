@@ -215,7 +215,7 @@ export function apply(ctx, input = {}) {
                 model: selectedRoute.model,
                 system,
                 temperature: 0.1,
-                maxTokens: input.llmMaxTokens ?? 4096,
+                maxTokens: input.llmMaxTokens ?? 16384,
                 signal: controller.signal,
                 messages: [{
                         id: randomUUID(),
