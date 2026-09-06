@@ -12,11 +12,14 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/adoresever/graph-memory.git"
+    "url": "git+https://github.com/meyaomiao/dsh-graphmemory.git"
   },
-  "homepage": "https://github.com/adoresever/graph-memory#readme",
+  "homepage": "https://github.com/meyaomiao/dsh-graphmemory#readme",
   "bugs": {
-    "url": "https://github.com/adoresever/graph-memory/issues"
+    "url": "https://github.com/meyaomiao/dsh-graphmemory/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=22.13.0"
@@ -52,7 +55,7 @@
   "scripts": {
     "build": "tsc",
     "build:dsh": "tsc -p tsconfig.dsh.json",
-    "prepack": "npm run build",
+    "prepack": "npm run build && npm run build:dsh && npm run build:client",
     "verify:package": "node scripts/verify-package.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -112,6 +115,5 @@
       ],
       "platform": "web"
     }
-  },
-  "prepack": "npm run build && npm run build:client"
+  }
 }

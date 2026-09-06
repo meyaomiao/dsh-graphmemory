@@ -210,26 +210,32 @@ Current beta: `1.6.0-beta.12`. Functional acceptance used DeepSeek Harness `0.1.
 
 ## Install on DeepSeek Harness
 
-Prerequisite: Node.js `22.13+`. The current beta is not yet published to npm, but the repository ships its prebuilt runtime and can be installed without authorizing install scripts:
+Prerequisite: Node.js `22.13+`. Package name: `dsh-graphmemory`.
 
 ```bash
-npx @deepseek-ai/dsh plugin --profile web add github:adoresever/graph-memory
+npx @deepseek-ai/dsh plugin --profile web add dsh-graphmemory
 npx @deepseek-ai/dsh --profile web --dump-config
 npx @deepseek-ai/dsh web
+```
+
+From GitHub without npm:
+
+```bash
+npx @deepseek-ai/dsh plugin --profile web add github:meyaomiao/dsh-graphmemory
 ```
 
 Alternatively, build and install a tarball from a checkout:
 
 ```bash
-git clone https://github.com/adoresever/graph-memory.git
-cd graph-memory
+git clone https://github.com/meyaomiao/dsh-graphmemory.git
+cd dsh-graphmemory
 npm install
 npm test
 npm pack
-npx @deepseek-ai/dsh plugin --profile web add /absolute/path/to/graph-memory-1.6.0-beta.10.tgz
+npx @deepseek-ai/dsh plugin --profile web add /absolute/path/to/dsh-graphmemory-1.6.0-beta.12.tgz
 ```
 
-After installation, verify that `graph-memory/dsh` is enabled under **Settings → Plugins → Plugin list**.
+After installation, verify that `dsh-graphmemory` is enabled under **Settings → Plugins → Plugin list**.
 
 Default store:
 
@@ -331,7 +337,7 @@ Pro should therefore be an optional Graph Memory DSH plugin module, not a separa
 ### Recommended package split
 
 ```text
-graph-memory                          # Community: current native Host Plugin
+dsh-graphmemory                      # Community: current native Host Plugin
 graph-memory-pro-dsh                 # Pro Lite: local beta Host + Client Plugin
 @adoresever/graph-memory-store-neo4j # Optional large-graph adapter, to be built
 ```
@@ -340,11 +346,10 @@ The first milestone should be **Pro Lite**: reuse the existing SQLite graph and 
 
 ### Current local installation
 
-The npm package `graph-memory@1.5.8` is still the OpenClaw release. The new Community beta can be installed from GitHub; `graph-memory-pro-dsh` still installs from a checkout:
+The npm package `graph-memory@1.5.8` is still the upstream OpenClaw release. This fork publishes as `dsh-graphmemory`. `graph-memory-pro-dsh` still installs from a checkout:
 
 ```bash
-dsh plugin --profile web add \
-  git+https://github.com/adoresever/graph-memory.git
+dsh plugin --profile web add dsh-graphmemory
 
 dsh plugin --profile web add \
   /absolute/path/to/graph-memory/dsh-pro

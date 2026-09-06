@@ -17,7 +17,7 @@
 先安装当前 Graph Memory bundle，使 DSH profile 可以解析 `graph-memory` 包：
 
 ```bash
-dsh plugin --profile web add git+https://github.com/adoresever/graph-memory.git
+dsh plugin --profile web add dsh-graphmemory
 ```
 
 然后用 Pro Lite overlay 启动：

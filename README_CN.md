@@ -192,26 +192,32 @@ graph-memory/
 
 ## 安装到 DeepSeek Harness
 
-前置条件：Node.js `22.13+`。当前 beta 尚未发布到 npm，但仓库已经包含预构建运行产物，可以直接安装且不需要授权安装脚本：
+前置条件：Node.js `22.13+`。包名：`dsh-graphmemory`。
 
 ```bash
-npx @deepseek-ai/dsh plugin --profile web add github:adoresever/graph-memory
+npx @deepseek-ai/dsh plugin --profile web add dsh-graphmemory
 npx @deepseek-ai/dsh --profile web --dump-config
 npx @deepseek-ai/dsh web
+```
+
+不走 npm、直接从 GitHub 装：
+
+```bash
+npx @deepseek-ai/dsh plugin --profile web add github:meyaomiao/dsh-graphmemory
 ```
 
 也可以从 checkout 构建并安装 tarball：
 
 ```bash
-git clone https://github.com/adoresever/graph-memory.git
-cd graph-memory
+git clone https://github.com/meyaomiao/dsh-graphmemory.git
+cd dsh-graphmemory
 npm install
 npm test
 npm pack
-npx @deepseek-ai/dsh plugin --profile web add /absolute/path/to/graph-memory-1.6.0-beta.10.tgz
+npx @deepseek-ai/dsh plugin --profile web add /absolute/path/to/dsh-graphmemory-1.6.0-beta.12.tgz
 ```
 
-安装后，在 **设置 → 插件 → 插件列表 → graph-memory/dsh** 中确认状态为“已启用”。默认数据库路径：
+安装后，在 **设置 → 插件 → 插件列表 → dsh-graphmemory** 中确认状态为“已启用”。默认数据库路径：
 
 ```text
 $DSH_HOME/graph-memory/graph-memory.db
@@ -298,7 +304,7 @@ flowchart LR
 ### 推荐包结构
 
 ```text
-graph-memory                         # Community：当前原生 Host Plugin
+dsh-graphmemory                      # Community：当前原生 Host Plugin
 graph-memory-pro-dsh                # Pro Lite：Host + Client Plugin（本地 beta）
 @adoresever/graph-memory-store-neo4j # 可选大图存储适配器（待实现）
 ```
@@ -307,11 +313,10 @@ graph-memory-pro-dsh                # Pro Lite：Host + Client Plugin（本地 b
 
 ### 当前本地安装方式
 
-当前 npm 上的 `graph-memory@1.5.8` 仍是 OpenClaw 包，新的 Community beta 与 `graph-memory-pro-dsh` 尚未发布到 npm。Community 可以直接从 GitHub 安装，Pro Lite 仍从 checkout 安装：
+当前 npm 上的 `graph-memory@1.5.8` 仍是上游 OpenClaw 包。本 fork 以 `dsh-graphmemory` 发布。Pro Lite 仍从 checkout 安装：
 
 ```bash
-dsh plugin --profile web add \
-  git+https://github.com/adoresever/graph-memory.git
+dsh plugin --profile web add dsh-graphmemory
 
 dsh plugin --profile web add \
   /absolute/path/to/graph-memory/dsh-pro
