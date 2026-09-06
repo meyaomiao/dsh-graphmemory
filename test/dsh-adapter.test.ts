@@ -579,4 +579,34 @@ describe("extraction drain resilience", () => {
     expect(countPending(dbPath)).toBe(0);
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it("backfills a 0.1.2 session that has snapshotEvents but no events array", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "gm-backfill-"));
+    const dbPath = join(dir, "graph-memory.db");
+    const { context, listeners, cleanups } = adapterContext(async function* () {
+      yield { type: "text-delta", text: EMPTY_EXTRACTION };
+      yield { type: "finish", reason: { kind: "stop" } };
+    });
+    apply(context, {
+      dbPath,
+      extractionEnabled: true,
+      recallEnabled: false,
+      llmProvider: "test-provider",
+      llmModel: "test-model",
+    });
+    const log = [userMsg(0, "remember snapshotEvents")];
+    const agent = {
+      id: "snapshot-backfill",
+      session: {
+        snapshotEvents() { return log; },
+        eventAt(seq: unknown) { return log.find((event) => event.seq === Number(seq)); },
+      },
+    };
+    expect(Array.isArray((agent.session as { events?: unknown }).events)).toBe(false);
+    await startAndEndTurn(listeners, agent);
+    await waitFor(() => countState(dbPath, "succeeded") === 1);
+    expect(countPending(dbPath)).toBe(0);
+    await Promise.all(cleanups.map(cleanup => cleanup()));
+    rmSync(dir, { recursive: true, force: true });
+  });
 });

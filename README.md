@@ -196,10 +196,10 @@ graph-memory/
 | Visible plugin state | **Done** | Active in Plugin Inventory |
 | Pro visual workbench | **Experimental** | Separate DSH Client Plugin with a read-only card snapshot |
 
-Current beta: `1.6.0-beta.11`. Functional acceptance used DeepSeek Harness `0.1.0-rc.8`; script-free Git installation and profile config composition were subsequently reverified against `0.1.1-rc.2`. Testing covered script-free Git and tarball installation, Web and Headless profile loading, configurable five-turn rolling compaction through the public agent-preset compaction service, exact source provenance, a lossless bounded extraction queue, failure quarantine and recovery, bounded raw-message retention, token-budget enforcement, high-precision automatic recall, FTS5 fallback, and the Pro Lite Host, Typed Remote, and Client bundle boundaries. All 149 automated tests passed. Real model-backed acceptance also verified rolling checkpoint replacement, 1024-dimensional `text-embedding-v4` vectors, and automatic cross-project recall without an explicit memory tool call.
+Current beta: `1.6.0-beta.12`. Functional acceptance used DeepSeek Harness `0.1.0-rc.8`; script-free Git installation and profile config composition were subsequently reverified against `0.1.1-rc.2`. Restart backfill and rolling compaction dual-read `Session.events` (0.1.1) and `snapshotEvents()` / `eventAt()` (0.1.2-rc.1), so a missing `events` array no longer silently skips ingest. Testing covered script-free Git and tarball installation, Web and Headless profile loading, configurable five-turn rolling compaction through the public agent-preset compaction service, exact source provenance, a lossless bounded extraction queue, failure quarantine and recovery, bounded raw-message retention, token-budget enforcement, high-precision automatic recall, FTS5 fallback, and the Pro Lite Host, Typed Remote, and Client bundle boundaries. All 155 automated tests passed. Real model-backed acceptance also verified rolling checkpoint replacement, 1024-dimensional `text-embedding-v4` vectors, and automatic cross-project recall without an explicit memory tool call.
 
 <p align="center">
-  <strong>Plugin enabled: graph-memory/dsh is active in the DSH plugin list</strong><br>
+  <strong>Plugin enabled: dsh-graphmemory/dsh is active in the DSH plugin list</strong><br>
   <img src="docs/images/dsh/plugin-inventory-active.png" alt="Graph Memory active in the DSH plugin list" width="88%">
 </p>
 
@@ -210,26 +210,32 @@ Current beta: `1.6.0-beta.11`. Functional acceptance used DeepSeek Harness `0.1.
 
 ## Install on DeepSeek Harness
 
-Prerequisite: Node.js `22.13+`. The current beta is not yet published to npm, but the repository ships its prebuilt runtime and can be installed without authorizing install scripts:
+Prerequisite: Node.js `22.13+`. Package name: `dsh-graphmemory`.
 
 ```bash
-npx @deepseek-ai/dsh plugin --profile web add github:adoresever/graph-memory
+npx @deepseek-ai/dsh plugin --profile web add dsh-graphmemory
 npx @deepseek-ai/dsh --profile web --dump-config
 npx @deepseek-ai/dsh web
+```
+
+From GitHub without npm:
+
+```bash
+npx @deepseek-ai/dsh plugin --profile web add github:meyaomiao/dsh-graphmemory
 ```
 
 Alternatively, build and install a tarball from a checkout:
 
 ```bash
-git clone https://github.com/adoresever/graph-memory.git
-cd graph-memory
+git clone https://github.com/meyaomiao/dsh-graphmemory.git
+cd dsh-graphmemory
 npm install
 npm test
 npm pack
-npx @deepseek-ai/dsh plugin --profile web add /absolute/path/to/graph-memory-1.6.0-beta.10.tgz
+npx @deepseek-ai/dsh plugin --profile web add /absolute/path/to/dsh-graphmemory-1.6.0-beta.12.tgz
 ```
 
-After installation, verify that `graph-memory/dsh` is enabled under **Settings → Plugins → Plugin list**.
+After installation, verify that `dsh-graphmemory` is enabled under **Settings → Plugins → Plugin list**.
 
 Default store:
 
@@ -331,7 +337,7 @@ Pro should therefore be an optional Graph Memory DSH plugin module, not a separa
 ### Recommended package split
 
 ```text
-graph-memory                          # Community: current native Host Plugin
+dsh-graphmemory                      # Community: current native Host Plugin
 graph-memory-pro-dsh                 # Pro Lite: local beta Host + Client Plugin
 @adoresever/graph-memory-store-neo4j # Optional large-graph adapter, to be built
 ```
@@ -340,11 +346,10 @@ The first milestone should be **Pro Lite**: reuse the existing SQLite graph and 
 
 ### Current local installation
 
-The npm package `graph-memory@1.5.8` is still the OpenClaw release. The new Community beta can be installed from GitHub; `graph-memory-pro-dsh` still installs from a checkout:
+The npm package `graph-memory@1.5.8` is still the upstream OpenClaw release. This fork publishes as `dsh-graphmemory`. `graph-memory-pro-dsh` still installs from a checkout:
 
 ```bash
-dsh plugin --profile web add \
-  git+https://github.com/adoresever/graph-memory.git
+dsh plugin --profile web add dsh-graphmemory
 
 dsh plugin --profile web add \
   /absolute/path/to/graph-memory/dsh-pro

@@ -6,13 +6,18 @@
  * Cordis lifecycle cleanup. The legacy OpenClaw entry remains index.ts.
  */
 import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { openDb } from "./src/store/db.js";
 import { allActiveNodes, findByName, getBySession, getStats, getVectorStats, getUnextracted, getExtractionStats, getPendingSessionIds, markMessagesExtracted, quarantineMessages, recordExtractionFailure, requeueQuarantined, saveMessageOnce, updateNode, upsertEdge, upsertNode, } from "./src/store/store.js";
 import { Extractor, normalizeExtractionContent } from "./src/extractor/extract.js";
+import { SqliteGraphSnapshotStore } from "./pro/sqlite.js";
+import { API_PREFIX, APP_PATH, APP_PREFIX, createDashboardRouter } from "./dashboard/server.js";
+import { buildRuntimeStatus } from "./dashboard/status.js";
 import { normalizeExtractionDrainPolicy, splitExtractionContent, } from "./src/extractor/drain-policy.js";
 import { Recaller } from "./src/recaller/recall.js";
 import { assembleContext } from "./src/format/assemble.js";
 import { selectDshRollingCompactionRange } from "./src/format/dsh-compaction.js";
+import { snapshotSessionEvents } from "./src/format/dsh-session.js";
 import { contributePromptDataContext } from "./src/format/prompt-data.js";
 import { createEmbedFn } from "./src/engine/embed.js";
 import { computeGlobalPageRank, invalidateGraphCache } from "./src/graph/pagerank.js";
@@ -20,7 +25,7 @@ import { detectCommunities } from "./src/graph/community.js";
 import { DEFAULT_CONFIG } from "./src/types.js";
 import { messageRetentionPolicyRevision, normalizeMessageRetentionPolicy, runMessageRetention, } from "./src/store/retention.js";
 export const name = "graph-memory-dsh";
-export const inject = ["tools", "llm", "systemPrompt", "agentLoop", "agents", "sessions", "credentials"];
+export const inject = ["tools", "llm", "systemPrompt", "agentLoop", "agents", "sessions", "credentials", "webServer"];
 const HOST = "dsh";
 const PLUGIN = "graph-memory";
 function sessionKey(id) {
@@ -179,14 +184,24 @@ export function apply(ctx, input = {}) {
             ctx.logger.warn(`[graph-memory] DSH embedding disabled: ${String(error)}`);
         });
     }
-    async function complete(route, system, user) {
-        const fallback = input.llmProvider && input.llmModel
-            ? { provider: input.llmProvider, model: input.llmModel }
-            : undefined;
-        const selectedRoute = route ?? fallback;
-        if (!selectedRoute) {
-            throw new Error("[graph-memory] DSH has not recorded a model route yet; send one normal message first or configure llmProvider/llmModel");
-        }
+    function configuredExtractionRoutes() {
+        const routes = [];
+        const seen = new Set();
+        const push = (provider, model) => {
+            if (typeof provider !== "string" || !provider || typeof model !== "string" || !model)
+                return;
+            const key = `${provider}\0${model}`;
+            if (seen.has(key))
+                return;
+            seen.add(key);
+            routes.push({ provider, model });
+        };
+        push(input.llmProvider, input.llmModel);
+        for (const entry of input.llmFallbacks ?? [])
+            push(entry?.provider, entry?.model);
+        return routes;
+    }
+    async function completeOnce(selectedRoute, system, user) {
         const controller = new AbortController();
         activeExtractionControllers.add(controller);
         let text = "";
@@ -200,7 +215,7 @@ export function apply(ctx, input = {}) {
                 model: selectedRoute.model,
                 system,
                 temperature: 0.1,
-                maxTokens: input.llmMaxTokens ?? 4096,
+                maxTokens: input.llmMaxTokens ?? 16384,
                 signal: controller.signal,
                 messages: [{
                         id: randomUUID(),
@@ -252,6 +267,24 @@ export function apply(ctx, input = {}) {
                 void Promise.resolve(iterator.return()).catch(() => undefined);
             }
         }
+    }
+    async function complete(_sessionRoute, system, user) {
+        const candidates = configuredExtractionRoutes();
+        if (!candidates.length) {
+            throw new Error("[graph-memory] configure llmProvider/llmModel for extraction; session model is not used");
+        }
+        const errors = [];
+        for (const candidate of candidates) {
+            try {
+                return await completeOnce(candidate, system, user);
+            }
+            catch (cause) {
+                const message = cause instanceof Error ? cause.message : String(cause);
+                errors.push(`${candidate.provider}/${candidate.model}: ${message}`);
+                ctx.logger.warn(`[graph-memory] DSH extraction ${candidate.provider}/${candidate.model} failed: ${message}`);
+            }
+        }
+        throw new Error(`[graph-memory] DSH extraction failed on all routes: ${errors.join(" | ")}`);
     }
     function ingest(sessionId, event) {
         const route = routeFromEvent(event);
@@ -517,9 +550,13 @@ export function apply(ctx, input = {}) {
     }
     function backfill(agent) {
         const id = agent?.id ?? agent?.session?.id;
-        if (id === undefined || !Array.isArray(agent?.session?.events))
+        if (id === undefined)
             return;
-        for (const event of agent.session.events)
+        const events = snapshotSessionEvents(agent?.session);
+        // Skip when the host exposes neither 0.1.2 readers nor a legacy events array.
+        if (events === undefined)
+            return;
+        for (const event of events)
             ingest(id, event);
     }
     // Graph Memory owns the rolling retention policy while DSH's public
@@ -582,18 +619,17 @@ export function apply(ctx, input = {}) {
         attachRollingCompaction(agent);
         backfill(agent);
     });
-    // DSH declares this as a serial, awaited lifecycle event before turn/end is
-    // committed. It is the reliable drain boundary for one-shot Headless: LLM
-    // adapters are still registered here, unlike ordinary session/event emit
-    // observers whose returned promises are intentionally ignored.
-    ctx.on("agent/turn-stopping", async ({ agent, signal }) => {
+    // Interactive Web must not await extraction here: DSH holds running=true
+    // (UI "Deep diving...") until this serial hook returns, then writes turn/end.
+    // Live ingest already happens on session/event; resume backfill is on
+    // agent/session-start. Headless drain still runs on plugin close.
+    ctx.on("agent/turn-stopping", ({ agent, signal }) => {
         if (signal?.aborted)
             return;
         const id = agent?.id ?? agent?.session?.id;
         if (id === undefined)
             return;
-        backfill(agent);
-        await scheduleExtract(id);
+        void scheduleExtract(id);
     });
     ctx.on("session/event", (session, event) => {
         const id = session?.id;
@@ -701,9 +737,60 @@ export function apply(ctx, input = {}) {
             const messageCount = Number(db.prepare("SELECT COUNT(*) AS count FROM gm_messages").get()?.count ?? 0);
             const extraction = getExtractionStats(db);
             const retentionRevision = messageRetentionPolicyRevision(messageRetention);
-            return `Graph Memory active (DSH native)\nStore: ${config.dbPath}\nNodes: ${stats.totalNodes}\nEdges: ${stats.totalEdges}\nMessages: ${messageCount}\nExtraction: ${extractionEnabled ? "enabled" : "disabled"} (pending=${extraction.pending}, succeeded=${extraction.succeeded}, quarantined=${extraction.quarantined})\nExtraction drain: maxChars=${extractionDrain.maxBatchChars}, maxMessages=${extractionDrain.maxBatchMessages}, retries=${extractionDrain.maxRetries}, timeoutMs=${extractionDrain.streamTimeoutMs}\nRecall: ${recallEnabled ? "enabled" : "disabled"}\nEmbedding: ${embeddingState}${embeddingModel}\nVectors: ${vectors.count}/${stats.totalNodes}${vectors.dimensions.length ? ` (${vectors.dimensions.join(", ")} dimensions)` : ""}\nMessage retention: keep=${messageRetention.keep}, recentTurns=${messageRetention.recentTurns}, retentionDays=${messageRetention.retentionDays}, batchSize=${messageRetention.batchSize}, dryRun=${messageRetention.dryRun}, revision=${retentionRevision}\nRetention GC: runs=${retentionMetrics.runs}, dryRuns=${retentionMetrics.dryRuns}, selected=${retentionMetrics.selectedRows}, deleted=${retentionMetrics.deletedRows}, estimatedDeletedBytes=${retentionMetrics.deletedBytes}\nRolling compaction: attached=${compactionMetrics.attached}, selected=${compactionMetrics.selected}, succeeded=${compactionMetrics.succeeded}, unavailable=${compactionMetrics.unavailable}, failed=${compactionMetrics.failed}`;
+            const extractionRoutes = configuredExtractionRoutes().map((route) => `${route.provider}/${route.model}`).join(" -> ") || "unset (session model is not used)";
+            return `Graph Memory active (DSH native)\nStore: ${config.dbPath}\nNodes: ${stats.totalNodes}\nEdges: ${stats.totalEdges}\nMessages: ${messageCount}\nExtraction: ${extractionEnabled ? "enabled" : "disabled"} (pending=${extraction.pending}, succeeded=${extraction.succeeded}, quarantined=${extraction.quarantined})\nExtraction routes: ${extractionRoutes}\nExtraction drain: maxChars=${extractionDrain.maxBatchChars}, maxMessages=${extractionDrain.maxBatchMessages}, retries=${extractionDrain.maxRetries}, timeoutMs=${extractionDrain.streamTimeoutMs}\nRecall: ${recallEnabled ? "enabled" : "disabled"}\nEmbedding: ${embeddingState}${embeddingModel}\nVectors: ${vectors.count}/${stats.totalNodes}${vectors.dimensions.length ? ` (${vectors.dimensions.join(", ")} dimensions)` : ""}\nMessage retention: keep=${messageRetention.keep}, recentTurns=${messageRetention.recentTurns}, retentionDays=${messageRetention.retentionDays}, batchSize=${messageRetention.batchSize}, dryRun=${messageRetention.dryRun}, revision=${retentionRevision}\nRetention GC: runs=${retentionMetrics.runs}, dryRuns=${retentionMetrics.dryRuns}, selected=${retentionMetrics.selectedRows}, deleted=${retentionMetrics.deletedRows}, estimatedDeletedBytes=${retentionMetrics.deletedBytes}\nRolling compaction: attached=${compactionMetrics.attached}, selected=${compactionMetrics.selected}, succeeded=${compactionMetrics.succeeded}, unavailable=${compactionMetrics.unavailable}, failed=${compactionMetrics.failed}`;
         },
     });
+    // Dashboard Web UI: loopback-only read-only HTTP API feeding the
+    // 记忆图谱 better-sidebar tab (client bundle: dist/client.js).
+    // webServer is inject-declared but the memory engine never depends on
+    // it — when the service is absent (non-HTTP hosts) this degrades to a
+    // no-op and only the tab goes missing.
+    const webServer = ctx.webServer;
+    if (webServer && typeof webServer.register === "function") {
+        const dashboardGraph = new SqliteGraphSnapshotStore({ dbPath: config.dbPath });
+        const statusSource = {
+            getStatus: () => buildRuntimeStatus({
+                db,
+                dbPath: config.dbPath,
+                contextCompactionEnabled,
+                freshTurnCount,
+                embeddingState: () => embeddingState,
+                embeddingModel: input.embedding?.model ?? null,
+                routes: () => configuredExtractionRoutes().map((route) => `${route.provider}/${route.model}`),
+                compactionMetrics: () => compactionMetrics,
+                drain: {
+                    maxBatchChars: extractionDrain.maxBatchChars,
+                    maxBatchMessages: extractionDrain.maxBatchMessages,
+                    maxRetries: extractionDrain.maxRetries,
+                    streamTimeoutMs: extractionDrain.streamTimeoutMs,
+                },
+                retention: {
+                    keep: messageRetention.keep,
+                    revision: messageRetentionPolicyRevision(messageRetention),
+                },
+            }),
+        };
+        const dashboardHandler = createDashboardRouter({
+            graph: dashboardGraph,
+            status: statusSource,
+            // 独立 UI 静态资源：dist/standalone.js（与 dist/dsh.js 同目录）。
+            readAsset: (name) => readFile(new URL(`./${name}`, import.meta.url), "utf8"),
+        });
+        ctx.effect(() => {
+            const dispose = webServer.register({
+                kind: "prefix",
+                path: APP_PREFIX,
+                handler: (req, res) => dashboardHandler(req, res),
+            });
+            ctx.logger.info(`[graph-memory] dashboard UI available at ${APP_PATH} (standalone) and ${API_PREFIX} (json api)`);
+            return () => {
+                if (typeof dispose === "function")
+                    dispose();
+                dashboardGraph.close();
+            };
+        }, "graph-memory: dashboard http api");
+    }
     ctx.tools.register({
         name: "gm_search",
         description: "Search long-term knowledge graph memory from earlier conversations.",
@@ -790,7 +877,7 @@ export function apply(ctx, input = {}) {
             let scheduled = 0;
             for (const pendingSid of pending) {
                 const rawId = pendingSid.startsWith(`${HOST}:`) ? pendingSid.slice(HOST.length + 1) : pendingSid;
-                if (input.llmProvider && input.llmModel || latestRoute.has(rawId)) {
+                if (configuredExtractionRoutes().length > 0 || latestRoute.has(rawId)) {
                     scheduleExtract(rawId);
                     scheduled += 1;
                 }
@@ -827,7 +914,7 @@ export function apply(ctx, input = {}) {
     }, "graph-memory.close");
     // With an explicit fallback route, recover durable pending work from prior
     // process exits even when those sessions are not reopened in the UI.
-    if (extractionEnabled && input.llmProvider && input.llmModel) {
+    if (extractionEnabled && configuredExtractionRoutes().length > 0) {
         for (const sid of getPendingSessionIds(db)) {
             scheduleExtract(sid.startsWith(`${HOST}:`) ? sid.slice(HOST.length + 1) : sid);
         }

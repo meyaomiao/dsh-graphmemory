@@ -6,6 +6,8 @@
  * Cordis lifecycle cleanup. The legacy OpenClaw entry remains index.ts.
  */
 import { createHash, randomUUID } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { readFile } from "node:fs/promises";
 import { openDb } from "./src/store/db.ts";
 import {
   allEdges,
@@ -27,6 +29,9 @@ import {
   upsertNode,
 } from "./src/store/store.ts";
 import { Extractor, normalizeExtractionContent } from "./src/extractor/extract.ts";
+import { SqliteGraphSnapshotStore } from "./pro/sqlite.ts";
+import { API_PREFIX, APP_PATH, APP_PREFIX, createDashboardRouter } from "./dashboard/server.ts";
+import { buildRuntimeStatus } from "./dashboard/status.ts";
 import {
   normalizeExtractionDrainPolicy,
   splitExtractionContent,
@@ -35,6 +40,7 @@ import {
 import { Recaller } from "./src/recaller/recall.ts";
 import { assembleContext } from "./src/format/assemble.ts";
 import { selectDshRollingCompactionRange } from "./src/format/dsh-compaction.ts";
+import { snapshotSessionEvents } from "./src/format/dsh-session.ts";
 import { contributePromptDataContext } from "./src/format/prompt-data.ts";
 import { createEmbedFn } from "./src/engine/embed.ts";
 import { computeGlobalPageRank, invalidateGraphCache } from "./src/graph/pagerank.ts";
@@ -49,7 +55,7 @@ import {
 } from "./src/store/retention.ts";
 
 export const name = "graph-memory-dsh";
-export const inject = ["tools", "llm", "systemPrompt", "agentLoop", "agents", "sessions", "credentials"];
+export const inject = ["tools", "llm", "systemPrompt", "agentLoop", "agents", "sessions", "credentials", "webServer"];
 
 interface DshEmbeddingConfig {
   apiKeyEnv?: string;
@@ -78,6 +84,8 @@ export interface Config {
   contextCompactionEnabled?: boolean;
   llmProvider?: string;
   llmModel?: string;
+  /** Extra extraction routes after llmProvider/llmModel. Session model is not used when any configured route exists. */
+  llmFallbacks?: Array<{ provider?: string; model?: string }>;
   llmMaxTokens?: number;
   embedding?: DshEmbeddingConfig;
   /** Bounded, lossless and durable extraction queue policy. */
@@ -107,6 +115,13 @@ interface DshContext {
   };
   credentials: {
     resolve(ref: string): Promise<{ value: string; source: string } | undefined>;
+  };
+  webServer?: {
+    register(route: {
+      kind: "prefix";
+      path: string;
+      handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+    }): (() => void) | void;
   };
   agents?: {
     get(id: unknown): any;
@@ -280,15 +295,22 @@ export function apply(ctx: DshContext, input: Config = {}): void {
     });
   }
 
-  async function complete(route: Route | undefined, system: string, user: string): Promise<string> {
-    const fallback = input.llmProvider && input.llmModel
-      ? { provider: input.llmProvider, model: input.llmModel }
-      : undefined;
-    const selectedRoute = route ?? fallback;
-    if (!selectedRoute) {
-      throw new Error("[graph-memory] DSH has not recorded a model route yet; send one normal message first or configure llmProvider/llmModel");
-    }
+  function configuredExtractionRoutes(): Route[] {
+    const routes: Route[] = [];
+    const seen = new Set<string>();
+    const push = (provider: unknown, model: unknown) => {
+      if (typeof provider !== "string" || !provider || typeof model !== "string" || !model) return;
+      const key = `${provider}\0${model}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      routes.push({ provider, model });
+    };
+    push(input.llmProvider, input.llmModel);
+    for (const entry of input.llmFallbacks ?? []) push(entry?.provider, entry?.model);
+    return routes;
+  }
 
+  async function completeOnce(selectedRoute: Route, system: string, user: string): Promise<string> {
     const controller = new AbortController();
     activeExtractionControllers.add(controller);
     let text = "";
@@ -304,7 +326,7 @@ export function apply(ctx: DshContext, input: Config = {}): void {
         model: selectedRoute.model,
         system,
         temperature: 0.1,
-        maxTokens: input.llmMaxTokens ?? 4096,
+        maxTokens: input.llmMaxTokens ?? 16384,
         signal: controller.signal,
         messages: [{
           id: randomUUID(),
@@ -350,6 +372,24 @@ export function apply(ctx: DshContext, input: Config = {}): void {
         void Promise.resolve(iterator.return()).catch(() => undefined);
       }
     }
+  }
+
+  async function complete(_sessionRoute: Route | undefined, system: string, user: string): Promise<string> {
+    const candidates = configuredExtractionRoutes();
+    if (!candidates.length) {
+      throw new Error("[graph-memory] configure llmProvider/llmModel for extraction; session model is not used");
+    }
+    const errors: string[] = [];
+    for (const candidate of candidates) {
+      try {
+        return await completeOnce(candidate, system, user);
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        errors.push(`${candidate.provider}/${candidate.model}: ${message}`);
+        ctx.logger.warn(`[graph-memory] DSH extraction ${candidate.provider}/${candidate.model} failed: ${message}`);
+      }
+    }
+    throw new Error(`[graph-memory] DSH extraction failed on all routes: ${errors.join(" | ")}`);
   }
 
   function ingest(sessionId: unknown, event: any): boolean {
@@ -624,8 +664,11 @@ export function apply(ctx: DshContext, input: Config = {}): void {
 
   function backfill(agent: any): void {
     const id = agent?.id ?? agent?.session?.id;
-    if (id === undefined || !Array.isArray(agent?.session?.events)) return;
-    for (const event of agent.session.events) ingest(id, event);
+    if (id === undefined) return;
+    const events = snapshotSessionEvents(agent?.session);
+    // Skip when the host exposes neither 0.1.2 readers nor a legacy events array.
+    if (events === undefined) return;
+    for (const event of events) ingest(id, event);
   }
 
   // Graph Memory owns the rolling retention policy while DSH's public
@@ -703,16 +746,15 @@ export function apply(ctx: DshContext, input: Config = {}): void {
     backfill(agent);
   });
 
-  // DSH declares this as a serial, awaited lifecycle event before turn/end is
-  // committed. It is the reliable drain boundary for one-shot Headless: LLM
-  // adapters are still registered here, unlike ordinary session/event emit
-  // observers whose returned promises are intentionally ignored.
-  ctx.on("agent/turn-stopping", async ({ agent, signal }: any) => {
+  // Interactive Web must not await extraction here: DSH holds running=true
+  // (UI "Deep diving...") until this serial hook returns, then writes turn/end.
+  // Live ingest already happens on session/event; resume backfill is on
+  // agent/session-start. Headless drain still runs on plugin close.
+  ctx.on("agent/turn-stopping", ({ agent, signal }: any) => {
     if (signal?.aborted) return;
     const id = agent?.id ?? agent?.session?.id;
     if (id === undefined) return;
-    backfill(agent);
-    await scheduleExtract(id);
+    void scheduleExtract(id);
   });
 
   ctx.on("session/event", (session: any, event: any) => {
@@ -821,9 +863,62 @@ export function apply(ctx: DshContext, input: Config = {}): void {
       const messageCount = Number((db.prepare("SELECT COUNT(*) AS count FROM gm_messages").get() as any)?.count ?? 0);
       const extraction = getExtractionStats(db);
       const retentionRevision = messageRetentionPolicyRevision(messageRetention);
-      return `Graph Memory active (DSH native)\nStore: ${config.dbPath}\nNodes: ${stats.totalNodes}\nEdges: ${stats.totalEdges}\nMessages: ${messageCount}\nExtraction: ${extractionEnabled ? "enabled" : "disabled"} (pending=${extraction.pending}, succeeded=${extraction.succeeded}, quarantined=${extraction.quarantined})\nExtraction drain: maxChars=${extractionDrain.maxBatchChars}, maxMessages=${extractionDrain.maxBatchMessages}, retries=${extractionDrain.maxRetries}, timeoutMs=${extractionDrain.streamTimeoutMs}\nRecall: ${recallEnabled ? "enabled" : "disabled"}\nEmbedding: ${embeddingState}${embeddingModel}\nVectors: ${vectors.count}/${stats.totalNodes}${vectors.dimensions.length ? ` (${vectors.dimensions.join(", ")} dimensions)` : ""}\nMessage retention: keep=${messageRetention.keep}, recentTurns=${messageRetention.recentTurns}, retentionDays=${messageRetention.retentionDays}, batchSize=${messageRetention.batchSize}, dryRun=${messageRetention.dryRun}, revision=${retentionRevision}\nRetention GC: runs=${retentionMetrics.runs}, dryRuns=${retentionMetrics.dryRuns}, selected=${retentionMetrics.selectedRows}, deleted=${retentionMetrics.deletedRows}, estimatedDeletedBytes=${retentionMetrics.deletedBytes}\nRolling compaction: attached=${compactionMetrics.attached}, selected=${compactionMetrics.selected}, succeeded=${compactionMetrics.succeeded}, unavailable=${compactionMetrics.unavailable}, failed=${compactionMetrics.failed}`;
+      const extractionRoutes = configuredExtractionRoutes().map((route) => `${route.provider}/${route.model}`).join(" -> ") || "unset (session model is not used)";
+      return `Graph Memory active (DSH native)\nStore: ${config.dbPath}\nNodes: ${stats.totalNodes}\nEdges: ${stats.totalEdges}\nMessages: ${messageCount}\nExtraction: ${extractionEnabled ? "enabled" : "disabled"} (pending=${extraction.pending}, succeeded=${extraction.succeeded}, quarantined=${extraction.quarantined})\nExtraction routes: ${extractionRoutes}\nExtraction drain: maxChars=${extractionDrain.maxBatchChars}, maxMessages=${extractionDrain.maxBatchMessages}, retries=${extractionDrain.maxRetries}, timeoutMs=${extractionDrain.streamTimeoutMs}\nRecall: ${recallEnabled ? "enabled" : "disabled"}\nEmbedding: ${embeddingState}${embeddingModel}\nVectors: ${vectors.count}/${stats.totalNodes}${vectors.dimensions.length ? ` (${vectors.dimensions.join(", ")} dimensions)` : ""}\nMessage retention: keep=${messageRetention.keep}, recentTurns=${messageRetention.recentTurns}, retentionDays=${messageRetention.retentionDays}, batchSize=${messageRetention.batchSize}, dryRun=${messageRetention.dryRun}, revision=${retentionRevision}\nRetention GC: runs=${retentionMetrics.runs}, dryRuns=${retentionMetrics.dryRuns}, selected=${retentionMetrics.selectedRows}, deleted=${retentionMetrics.deletedRows}, estimatedDeletedBytes=${retentionMetrics.deletedBytes}\nRolling compaction: attached=${compactionMetrics.attached}, selected=${compactionMetrics.selected}, succeeded=${compactionMetrics.succeeded}, unavailable=${compactionMetrics.unavailable}, failed=${compactionMetrics.failed}`;
     },
   });
+
+  // Dashboard Web UI: loopback-only read-only HTTP API feeding the
+  // 记忆图谱 better-sidebar tab (client bundle: dist/client.js).
+  // webServer is inject-declared but the memory engine never depends on
+  // it — when the service is absent (non-HTTP hosts) this degrades to a
+  // no-op and only the tab goes missing.
+  const webServer = ctx.webServer;
+  if (webServer && typeof webServer.register === "function") {
+    const dashboardGraph = new SqliteGraphSnapshotStore({ dbPath: config.dbPath });
+    const statusSource = {
+      getStatus: () => buildRuntimeStatus({
+        db,
+        dbPath: config.dbPath,
+        contextCompactionEnabled,
+        freshTurnCount,
+        embeddingState: () => embeddingState,
+        embeddingModel: input.embedding?.model ?? null,
+        routes: () => configuredExtractionRoutes().map((route) => `${route.provider}/${route.model}`),
+        compactionMetrics: () => compactionMetrics,
+        drain: {
+          maxBatchChars: extractionDrain.maxBatchChars,
+          maxBatchMessages: extractionDrain.maxBatchMessages,
+          maxRetries: extractionDrain.maxRetries,
+          streamTimeoutMs: extractionDrain.streamTimeoutMs,
+        },
+        retention: {
+          keep: messageRetention.keep,
+          revision: messageRetentionPolicyRevision(messageRetention),
+        },
+      }),
+    };
+    const dashboardHandler = createDashboardRouter({
+      graph: dashboardGraph,
+      status: statusSource,
+      // 独立 UI 静态资源：dist/standalone.js（与 dist/dsh.js 同目录）。
+      readAsset: (name) => readFile(new URL(`./${name}`, import.meta.url), "utf8"),
+    });
+    ctx.effect(() => {
+      const dispose = webServer.register({
+        kind: "prefix",
+        path: APP_PREFIX,
+        handler: (req: IncomingMessage, res: ServerResponse) => dashboardHandler(req, res),
+      });
+      ctx.logger.info(
+        `[graph-memory] dashboard UI available at ${APP_PATH} (standalone) and ${API_PREFIX} (json api)`,
+      );
+      return () => {
+        if (typeof dispose === "function") dispose();
+        dashboardGraph.close();
+      };
+    }, "graph-memory: dashboard http api");
+  }
 
   ctx.tools.register({
     name: "gm_search",
@@ -914,7 +1009,7 @@ export function apply(ctx: DshContext, input: Config = {}): void {
       let scheduled = 0;
       for (const pendingSid of pending) {
         const rawId = pendingSid.startsWith(`${HOST}:`) ? pendingSid.slice(HOST.length + 1) : pendingSid;
-        if (input.llmProvider && input.llmModel || latestRoute.has(rawId)) {
+        if (configuredExtractionRoutes().length > 0 || latestRoute.has(rawId)) {
           scheduleExtract(rawId);
           scheduled += 1;
         }
@@ -951,7 +1046,7 @@ export function apply(ctx: DshContext, input: Config = {}): void {
 
   // With an explicit fallback route, recover durable pending work from prior
   // process exits even when those sessions are not reopened in the UI.
-  if (extractionEnabled && input.llmProvider && input.llmModel) {
+  if (extractionEnabled && configuredExtractionRoutes().length > 0) {
     for (const sid of getPendingSessionIds(db)) {
       scheduleExtract(sid.startsWith(`${HOST}:`) ? sid.slice(HOST.length + 1) : sid);
     }

@@ -83,4 +83,29 @@ describe("DSH rolling compaction selection", () => {
     expect(isDshUserTurn(user("plugin"))).toBe(false);
     expect(isDshUserTurn({ type: "assistant/message" })).toBe(false);
   });
+
+  it("selects the same prefix from a 0.1.2 session that only has eventAt", () => {
+    const events: any[] = [];
+    events[20] = user("plugin");
+    events[4] = user();
+    events[5] = { type: "assistant/message" };
+    events[9] = user();
+    events[10] = { type: "assistant/message" };
+    events[14] = user();
+    const session = {
+      eventAt(seq: unknown) {
+        return events[Number(seq)];
+      },
+      snapshotEvents() {
+        return events.filter(Boolean);
+      },
+      surface: { nodes: [20, 4, 5, 9, 10, 14] },
+    };
+
+    expect(selectDshRollingCompactionRange(session, 2)).toMatchObject({
+      start: 20,
+      end: 5,
+      shadowedSeqs: [20, 4, 5],
+    });
+  });
 });

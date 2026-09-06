@@ -1,6 +1,6 @@
 {
-  "name": "graph-memory",
-  "version": "1.6.0-beta.11",
+  "name": "dsh-graphmemory",
+  "version": "1.6.0-beta.12",
   "description": "Knowledge graph memory for DeepSeek Harness and OpenClaw — cross-session recall, PageRank, communities, and vector search",
   "keywords": [
     "deepseek-harness",
@@ -12,23 +12,28 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/adoresever/graph-memory.git"
+    "url": "git+https://github.com/meyaomiao/dsh-graphmemory.git"
   },
-  "homepage": "https://github.com/adoresever/graph-memory#readme",
+  "homepage": "https://github.com/meyaomiao/dsh-graphmemory#readme",
   "bugs": {
-    "url": "https://github.com/adoresever/graph-memory/issues"
+    "url": "https://github.com/meyaomiao/dsh-graphmemory/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=22.13.0"
   },
-  "main": "dist/index.js",
+  "main": "./dist/dsh.js",
   "type": "module",
   "exports": {
-    ".": "./dist/index.js",
+    ".": "./dist/dsh.js",
     "./dsh": "./dist/dsh.js",
     "./pro": "./dist/pro/index.js",
     "./pro/dsh": "./dist/pro/dsh.js",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./client": "./dist/client.js",
+    "./openclaw": "./dist/index.js"
   },
   "files": [
     "dist",
@@ -44,15 +49,17 @@
     "openclaw.plugin.json",
     "README.md",
     "README_CN.md",
-    "LICENSE"
+    "LICENSE",
+    "dashboard"
   ],
   "scripts": {
     "build": "tsc",
     "build:dsh": "tsc -p tsconfig.dsh.json",
-    "prepack": "npm run build",
+    "prepack": "npm run build && npm run build:dsh && npm run build:client",
     "verify:package": "node scripts/verify-package.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:client": "node scripts/build-client.mjs"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.48"
@@ -61,6 +68,9 @@
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.8",
     "@types/node": "^22.13.0",
+    "esbuild": "^0.28.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^5.4.0",
     "vitest": "^1.4.0"
   },
@@ -98,6 +108,12 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "dsh-better-sidebar"
+      ],
+      "platform": "web"
     }
   }
 }

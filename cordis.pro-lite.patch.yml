@@ -1,6 +1,6 @@
 - insert:
     - id: graph-memory-pro
-      name: 'graph-memory/pro/dsh'
+      name: 'dsh-graphmemory/pro/dsh'
       config:
         dbPath: !!js dshHomePath('graph-memory/graph-memory.db')
         defaultNodeLimit: 200

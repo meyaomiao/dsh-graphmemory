@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { Extractor, normalizeExtractionContent } from "../src/extractor/extract.ts";
+import { Extractor, normalizeExtractionContent, salvageTruncatedExtractionJson } from "../src/extractor/extract.ts";
 import { DEFAULT_CONFIG } from "../src/types.ts";
 import type { ExtractionResult, FinalizeResult } from "../src/types.ts";
 
@@ -377,6 +377,28 @@ describe("LLM 输出格式容错", () => {
 
     expect(result.nodes).toHaveLength(0);
     expect(result.edges).toHaveLength(0);
+  });
+
+  it("截断在第二个 node 中途时保留第一个完整 node", async () => {
+    const truncated = '{"nodes":[{"type":"TASK","name":"keep-first","description":"保留","content":"keep-first\\n目标: 完整节点"},{"type":"TASK","name":"cut-off","description":"截断","content":"cut-off\\n目标:';
+    const ext = createExtractor(truncated);
+    const result = await ext.extract({ messages: [], existingNames: [] });
+    expect(result.nodes.map((node) => node.name)).toEqual(["keep-first"]);
+    expect(result.edges).toHaveLength(0);
+  });
+
+  it("截断在 edges 数组中途时仍保留完整 node 和完整 edge", async () => {
+    const truncated = '{"nodes":[{"type":"TASK","name":"keep-task","description":"任务","content":"keep-task\\n目标: x"},{"type":"SKILL","name":"keep-skill","description":"技能","content":"keep-skill\\n触发条件: y"}],"edges":[{"from":"keep-task","to":"keep-skill","type":"USED_SKILL","instruction":"调用 keep-skill"},{"from":"keep-task","to":"keep-skill","type":"USED_SKILL","instruction":"未写完';
+    const ext = createExtractor(truncated);
+    const result = await ext.extract({ messages: [], existingNames: [] });
+    expect(result.nodes.map((node) => node.name).sort()).toEqual(["keep-skill", "keep-task"]);
+    expect(result.edges).toHaveLength(1);
+    expect(result.edges[0].from).toBe("keep-task");
+    expect(result.edges[0].to).toBe("keep-skill");
+  });
+
+  it("salvageTruncatedExtractionJson 对纯文本返回 null", () => {
+    expect(salvageTruncatedExtractionJson("这不是 JSON")).toBeNull();
   });
 });
 

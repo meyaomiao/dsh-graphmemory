@@ -295,11 +295,20 @@ export class Extractor {
   }
 
   private parseExtract(raw: string): ExtractionResult {
+    const json = extractJson(raw);
+    let payload: { nodes?: unknown; edges?: unknown } | null = null;
     try {
-      const json = extractJson(raw);
-      const p = JSON.parse(json);
-
-      const nodes = (p.nodes ?? []).filter((n: any) => {
+      payload = JSON.parse(json);
+    } catch {
+      payload = salvageTruncatedExtractionJson(json) ?? salvageTruncatedExtractionJson(raw);
+    }
+    if (!payload || typeof payload !== "object") {
+      throw new Error(
+        `[graph-memory] extraction parse failed: SyntaxError: truncated or invalid JSON\nraw (first 200): ${raw.slice(0, 200)}`,
+      );
+    }
+    try {
+      const nodes = (Array.isArray(payload.nodes) ? payload.nodes : []).filter((n: any) => {
         if (!n.name || !n.type || !n.content) return false;
         if (!VALID_NODE_TYPES.has(n.type)) {
           return false;
@@ -315,14 +324,14 @@ export class Extractor {
       const nameToType = new Map<string, string>();
       for (const n of nodes) nameToType.set(n.name, n.type);
 
-      const edges = (p.edges ?? [])
+      const edges = (Array.isArray(payload.edges) ? payload.edges : [])
         .filter((e: any) => e.from && e.to && e.type && e.instruction)
         .map((e: any) => {
           e.from = normalizeName(e.from);
           e.to = normalizeName(e.to);
           return correctEdgeType(e, nameToType);
         })
-        .filter((e: any) => e !== null);
+        .filter((e: any): e is NonNullable<typeof e> => e !== null);
 
       return { nodes, edges };
     } catch (err) {
@@ -355,7 +364,7 @@ export class Extractor {
           e.to = normalizeName(e.to);
           return correctEdgeType(e, nameToType);
         })
-        .filter((e: any) => e !== null);
+        .filter((e: any): e is NonNullable<typeof e> => e !== null);
 
       return {
         promotedSkills,
@@ -380,4 +389,89 @@ function extractJson(raw: string): string {
   const last = s.lastIndexOf("}");
   if (first !== -1 && last > first) return s.slice(first, last + 1);
   return s;
+}
+
+function skipJsonString(source: string, quoteIndex: number): number {
+  for (let i = quoteIndex + 1; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === "\\") {
+      i += 1;
+      continue;
+    }
+    if (ch === '"') return i + 1;
+  }
+  return source.length;
+}
+
+/** Collect complete `{...}` objects from a (possibly truncated) JSON array body. */
+function completeJsonObjects(arrayBody: string): unknown[] {
+  const objects: unknown[] = [];
+  let i = 0;
+  while (i < arrayBody.length) {
+    while (i < arrayBody.length && /[\s,]/.test(arrayBody[i] ?? "")) i += 1;
+    if (arrayBody[i] !== "{") break;
+    const start = i;
+    let depth = 0;
+    let truncated = true;
+    while (i < arrayBody.length) {
+      const ch = arrayBody[i];
+      if (ch === '"') {
+        i = skipJsonString(arrayBody, i);
+        continue;
+      }
+      if (ch === "{") depth += 1;
+      else if (ch === "}") {
+        depth -= 1;
+        i += 1;
+        if (depth === 0) {
+          truncated = false;
+          break;
+        }
+        continue;
+      }
+      i += 1;
+    }
+    if (truncated) break;
+    try {
+      objects.push(JSON.parse(arrayBody.slice(start, i)));
+    } catch {
+      break;
+    }
+  }
+  return objects;
+}
+
+function arrayBodyAfterKey(source: string, key: "nodes" | "edges"): string | null {
+  const needle = `"${key}"`;
+  const keyAt = source.indexOf(needle);
+  if (keyAt < 0) return null;
+  const bracket = source.indexOf("[", keyAt + needle.length);
+  if (bracket < 0) return null;
+  return source.slice(bracket + 1);
+}
+
+/**
+ * Recover complete nodes/edges from a token-truncated extraction payload.
+ * Returns null when nothing complete can be recovered (caller still throws).
+ */
+export function salvageTruncatedExtractionJson(raw: string): { nodes: unknown[]; edges: unknown[] } | null {
+  const source = extractJson(raw);
+  const stripped = source.replace(/,+\s*$/, "");
+  for (const suffix of ["]}", "\n]}", "}]}", "]}"] as const) {
+    try {
+      const parsed = JSON.parse(stripped + suffix);
+      if (parsed && typeof parsed === "object" && (Array.isArray(parsed.nodes) || Array.isArray(parsed.edges))) {
+        return {
+          nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
+          edges: Array.isArray(parsed.edges) ? parsed.edges : [],
+        };
+      }
+    } catch {
+      // keep scanning complete objects
+    }
+  }
+  const nodes = completeJsonObjects(arrayBodyAfterKey(source, "nodes") ?? "");
+  const edges = completeJsonObjects(arrayBodyAfterKey(source, "edges") ?? "");
+  if (!nodes.length && !edges.length) return null;
+  return { nodes, edges };
 }
