@@ -36,10 +36,14 @@ export function vectorCoverage(vectors: number, nodes: number): number | null {
   return Math.max(0, Math.min(1, vectors / nodes));
 }
 
-/** 归一化错误摘要：取首行、剥掉 [graph-memory] 前缀并折叠空白（纯函数，便于单测）。 */
+/** 归一化错误摘要：取首行、剥掉 [graph-memory] 前缀；JSON parse 失败归并成一类。 */
 export function normalizeErrorKind(raw: string | null | undefined): string {
   const firstLine = (raw ?? "").split("\n", 1)[0] ?? "";
-  return firstLine.replace(/^\s*\[graph-memory\]\s*/, "").trim() || "未知错误";
+  const kind = firstLine.replace(/\[graph-memory\]\s*/g, "").trim() || "未知错误";
+  if (/extraction parse failed:\s*SyntaxError/i.test(kind)) {
+    return "extraction parse failed: SyntaxError (JSON)";
+  }
+  return kind;
 }
 
 const int = (value: unknown): number =>
@@ -51,15 +55,23 @@ export interface RecentExtractionErrorRow {
   last: unknown;
 }
 
-/** 归并 DB 错误行 → 展示列表（纯函数，便于单测）。 */
+/** 归并 DB 错误行 → 展示列表；同 kind 合并计数，按最近出现排序。 */
 export function summarizeErrors(rows: RecentExtractionErrorRow[]): GraphMemoryStatus["recentErrors"] {
-  return rows
-    .map((row) => ({
-      kind: normalizeErrorKind(row.kind),
-      count: int(row.count),
-      lastSeenAt: typeof row.last === "number" ? row.last : 0,
-    }))
-    .filter((row) => row.kind.length > 0);
+  const merged = new Map<string, { kind: string; count: number; lastSeenAt: number }>();
+  for (const row of rows) {
+    const kind = normalizeErrorKind(row.kind);
+    if (!kind) continue;
+    const count = int(row.count);
+    const lastSeenAt = typeof row.last === "number" ? row.last : 0;
+    const prev = merged.get(kind);
+    if (!prev) {
+      merged.set(kind, { kind, count, lastSeenAt });
+      continue;
+    }
+    prev.count += count;
+    if (lastSeenAt > prev.lastSeenAt) prev.lastSeenAt = lastSeenAt;
+  }
+  return [...merged.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt || b.count - a.count);
 }
 
 /** 引擎侧实时指标（由 dsh.ts apply() 闭包提供，避免暴露内部可变对象）。 */
@@ -105,16 +117,19 @@ export function buildRuntimeStatus(refs: DashboardEngineRefs, now: number = Date
     : null;
   const coverage = vectorCoverage(vectorCount, graphStats.totalNodes);
 
+  // 「实时情况」只看近 1 小时写过 error 的行。全库按 count 排序会把
+  // 昨天隔离的化石（No eligible accounts / configure llmProvider）永远压在顶上。
   const errorRows = db.prepare(
     `SELECT TRIM(substr(extraction_error, 1, 120)) AS kind,
             COUNT(*) AS count,
             MAX(extraction_updated_at) AS last
      FROM gm_messages
      WHERE extraction_error IS NOT NULL AND extraction_state != 'succeeded'
+       AND extraction_updated_at > ?
      GROUP BY kind
-     ORDER BY count DESC
-     LIMIT 4`,
-  ).all() as unknown as RecentExtractionErrorRow[];
+     ORDER BY last DESC, count DESC
+     LIMIT 12`,
+  ).all(now - RECENT_WINDOW_1H) as unknown as RecentExtractionErrorRow[];
 
   let dbSizeBytes: number | null = null;
   try {

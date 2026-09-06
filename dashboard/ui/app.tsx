@@ -182,7 +182,7 @@ function StatusOverview(props: { status: GraphMemoryStatus | null; error: string
               {status.recentErrors.slice(0, 2).map((item) => (
                 <div key={item.kind} className="gm-status-error" title={`${item.kind} · 最近 ${relativeTime(item.lastSeenAt)}`}>
                   <span className="gm-status-error-kind">{item.kind}</span>
-                  <span className="gm-status-error-count">×{formatNumber(item.count)}</span>
+                  <span className="gm-status-error-count">×{formatNumber(item.count)} · {relativeTime(item.lastSeenAt)}</span>
                 </div>
               ))}
             </div>

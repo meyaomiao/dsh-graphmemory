@@ -64,6 +64,15 @@ describe("normalizeErrorKind", () => {
     expect(normalizeErrorKind("   ")).toBe("未知错误");
     expect(normalizeErrorKind(null)).toBe("未知错误");
   });
+
+  it("collapses JSON parse failures that only differ by byte offset", () => {
+    expect(normalizeErrorKind(
+      "[graph-memory] extraction parse failed: SyntaxError: Expected ',' or ']' after array element in JSON at position 8954",
+    )).toBe("extraction parse failed: SyntaxError (JSON)");
+    expect(normalizeErrorKind(
+      "extraction parse failed: SyntaxError: Unterminated string in JSON at position 10773",
+    )).toBe("extraction parse failed: SyntaxError (JSON)");
+  });
 });
 
 describe("summarizeErrors", () => {
@@ -75,8 +84,19 @@ describe("summarizeErrors", () => {
     ]);
     expect(rows).toEqual([
       { kind: "boom", count: 3, lastSeenAt: 42 },
-      { kind: "未知错误", count: 1, lastSeenAt: 0 },
-      { kind: "未知错误", count: 2, lastSeenAt: 5 },
+      { kind: "未知错误", count: 3, lastSeenAt: 5 },
+    ]);
+  });
+
+  it("merges JSON parse variants and sorts by lastSeenAt", () => {
+    const rows = summarizeErrors([
+      { kind: "extraction parse failed: SyntaxError: Expected ',' at position 1", count: 2, last: 10 },
+      { kind: "extraction parse failed: SyntaxError: Unterminated string at position 9", count: 5, last: 40 },
+      { kind: "DSH LLM error: timeout", count: 1, last: 30 },
+    ]);
+    expect(rows.map((row) => ({ kind: row.kind, count: row.count, lastSeenAt: row.lastSeenAt }))).toEqual([
+      { kind: "extraction parse failed: SyntaxError (JSON)", count: 7, lastSeenAt: 40 },
+      { kind: "DSH LLM error: timeout", count: 1, lastSeenAt: 30 },
     ]);
   });
 });
@@ -90,6 +110,20 @@ describe("buildRuntimeStatus", () => {
     insertMessage(db, "p1", "pending", now, "429 too fast");
     insertMessage(db, "p2", "pending", now);
     insertMessage(db, "q1", "quarantined", now - 3_600_000, "[graph-memory] DSH LLM error: 429 quota");
+    insertMessage(
+      db,
+      "fossil",
+      "quarantined",
+      now - 13 * 3_600_000,
+      "[graph-memory] configure llmProvider/llmModel for extraction; session model is not used",
+    );
+    insertMessage(
+      db,
+      "parse-now",
+      "pending",
+      now - 30_000,
+      "[graph-memory] extraction parse failed: SyntaxError: Expected ',' or ']' after array element in JSON at position 8954",
+    );
 
     const status = buildRuntimeStatus({
       db,
@@ -104,25 +138,28 @@ describe("buildRuntimeStatus", () => {
       retention: { keep: "all", revision: "rev-1" },
     }, now);
 
-    expect(status.extraction.pending).toBe(2);
+    expect(status.extraction.pending).toBe(3);
     expect(status.extraction.succeeded).toBe(2);
-    expect(status.extraction.quarantined).toBe(1);
+    expect(status.extraction.quarantined).toBe(2);
     expect(status.extraction.recent5m).toBe(1);
     expect(status.extraction.recent1h).toBe(1);
     expect(status.extraction.recent24h).toBe(2);
     expect(status.extraction.health).toBe("draining");
     expect(status.extraction.lastSucceededAt).toBe(now - 60_000);
     expect(status.graph.nodes).toBe(1);
-    expect(status.graph.messages).toBe(5);
+    expect(status.graph.messages).toBe(7);
     expect(status.recall.vectors).toBe(1);
     expect(status.recall.dimensions).toBe(1024);
     expect(status.recall.coverage).toBe(1);
     expect(status.routes).toEqual(["grok/grok-4.6", "zai/glm-5.3-flash"]);
     expect(status.compaction.enabled).toBe(false);
     expect(status.drain.maxBatchChars).toBe(8000);
-    expect([...status.recentErrors.map((row) => row.kind)].sort()).toEqual(
-      ["429 too fast", "DSH LLM error: 429 quota"].sort(),
-    );
+    expect(status.recentErrors.map((row) => row.kind)).toEqual([
+      "429 too fast",
+      "extraction parse failed: SyntaxError (JSON)",
+    ]);
+    expect(status.recentErrors.some((row) => row.kind.includes("configure llmProvider"))).toBe(false);
+    expect(status.recentErrors.some((row) => row.kind.includes("429 quota"))).toBe(false);
     db.close();
   });
 });

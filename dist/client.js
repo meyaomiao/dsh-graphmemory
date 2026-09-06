@@ -355,7 +355,9 @@ function StatusOverview(props) {
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "gm-status-error-kind", children: item.kind }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "gm-status-error-count", children: [
             "\xD7",
-            formatNumber(item.count)
+            formatNumber(item.count),
+            " \xB7 ",
+            relativeTime(item.lastSeenAt)
           ] })
         ] }, item.kind)) }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "gm-progress-caption", children: "\u8FD1\u671F\u65E0\u62BD\u53D6\u9519\u8BEF" })
       ] })
