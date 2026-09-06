@@ -196,7 +196,7 @@ graph-memory/
 | Visible plugin state | **Done** | Active in Plugin Inventory |
 | Pro visual workbench | **Experimental** | Separate DSH Client Plugin with a read-only card snapshot |
 
-Current beta: `1.6.0-beta.12`. Functional acceptance used DeepSeek Harness `0.1.0-rc.8`; script-free Git installation and profile config composition were subsequently reverified against `0.1.1-rc.2`. Restart backfill and rolling compaction dual-read `Session.events` (0.1.1) and `snapshotEvents()` / `eventAt()` (0.1.2-rc.1), so a missing `events` array no longer silently skips ingest. Testing covered script-free Git and tarball installation, Web and Headless profile loading, configurable five-turn rolling compaction through the public agent-preset compaction service, exact source provenance, a lossless bounded extraction queue, failure quarantine and recovery, bounded raw-message retention, token-budget enforcement, high-precision automatic recall, FTS5 fallback, and the Pro Lite Host, Typed Remote, and Client bundle boundaries. All 155 automated tests passed. Real model-backed acceptance also verified rolling checkpoint replacement, 1024-dimensional `text-embedding-v4` vectors, and automatic cross-project recall without an explicit memory tool call.
+Current package: `dsh-graphmemory@0.1.0` (new npm line; upstream lineage was `graph-memory@1.6.0-beta.12`). Functional acceptance used DeepSeek Harness `0.1.0-rc.8`; script-free Git installation and profile config composition were subsequently reverified against `0.1.1-rc.2`. Restart backfill and rolling compaction dual-read `Session.events` (0.1.1) and `snapshotEvents()` / `eventAt()` (0.1.2-rc.1), so a missing `events` array no longer silently skips ingest. Testing covered script-free Git and tarball installation, Web and Headless profile loading, configurable five-turn rolling compaction through the public agent-preset compaction service, exact source provenance, a lossless bounded extraction queue, failure quarantine and recovery, bounded raw-message retention, token-budget enforcement, high-precision automatic recall, FTS5 fallback, and the Pro Lite Host, Typed Remote, and Client bundle boundaries. All 155 automated tests passed. Real model-backed acceptance also verified rolling checkpoint replacement, 1024-dimensional `text-embedding-v4` vectors, and automatic cross-project recall without an explicit memory tool call.
 
 <p align="center">
   <strong>Plugin enabled: dsh-graphmemory/dsh is active in the DSH plugin list</strong><br>
@@ -232,7 +232,7 @@ cd dsh-graphmemory
 npm install
 npm test
 npm pack
-npx @deepseek-ai/dsh plugin --profile web add /absolute/path/to/dsh-graphmemory-1.6.0-beta.12.tgz
+npx @deepseek-ai/dsh plugin --profile web add /absolute/path/to/dsh-graphmemory-0.1.0.tgz
 ```
 
 After installation, verify that `dsh-graphmemory` is enabled under **Settings → Plugins → Plugin list**.

@@ -178,7 +178,7 @@ graph-memory/
 | 插件状态可见 | **已完成** | 设置页 Plugin Inventory 显示 active |
 | Pro 可视化工作台 | **实验版可用** | 独立 DSH Client Plugin，当前为只读卡片式快照 |
 
-当前 beta：`1.6.0-beta.12`。完整功能验收宿主为 DeepSeek Harness `0.1.0-rc.8`；随后又在 `0.1.1-rc.2` 上复验了无脚本 Git 安装与 profile 配置组合。重启回填与滚动压缩同时兼容 `Session.events`（0.1.1）和 `snapshotEvents()` / `eventAt()`（0.1.2-rc.1），避免 0.1.2 去掉 `events` 数组后静默跳过摄取。验收已覆盖无安装脚本的 Git 与 tarball 安装、Web / Headless profile 原生加载、通过 Agent 公共 compaction 服务执行的可配置最近 5 轮滚动压缩、精确原文溯源、无损有界抽取队列、失败隔离与恢复、有界原始消息保留策略、token 预算、高精度自动召回、FTS5 降级，以及 Pro Lite Host、Typed Remote 和 Client bundle 边界；155 项自动化测试通过。真实模型验收还完成了滚动 checkpoint 替换、`text-embedding-v4` 1024 维向量写入，以及不调用记忆工具的跨项目自动召回。
+当前包：`dsh-graphmemory@0.1.0`（新 npm 线；上游谱系为 `graph-memory@1.6.0-beta.12`）。完整功能验收宿主为 DeepSeek Harness `0.1.0-rc.8`；随后又在 `0.1.1-rc.2` 上复验了无脚本 Git 安装与 profile 配置组合。重启回填与滚动压缩同时兼容 `Session.events`（0.1.1）和 `snapshotEvents()` / `eventAt()`（0.1.2-rc.1），避免 0.1.2 去掉 `events` 数组后静默跳过摄取。验收已覆盖无安装脚本的 Git 与 tarball 安装、Web / Headless profile 原生加载、通过 Agent 公共 compaction 服务执行的可配置最近 5 轮滚动压缩、精确原文溯源、无损有界抽取队列、失败隔离与恢复、有界原始消息保留策略、token 预算、高精度自动召回、FTS5 降级，以及 Pro Lite Host、Typed Remote 和 Client bundle 边界；155 项自动化测试通过。真实模型验收还完成了滚动 checkpoint 替换、`text-embedding-v4` 1024 维向量写入，以及不调用记忆工具的跨项目自动召回。
 
 <p align="center">
   <strong>插件已启用：graph-memory/dsh 在 DSH 插件列表中处于 active</strong><br>
@@ -214,7 +214,7 @@ cd dsh-graphmemory
 npm install
 npm test
 npm pack
-npx @deepseek-ai/dsh plugin --profile web add /absolute/path/to/dsh-graphmemory-1.6.0-beta.12.tgz
+npx @deepseek-ai/dsh plugin --profile web add /absolute/path/to/dsh-graphmemory-0.1.0.tgz
 ```
 
 安装后，在 **设置 → 插件 → 插件列表 → dsh-graphmemory** 中确认状态为“已启用”。默认数据库路径：

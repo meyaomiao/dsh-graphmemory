@@ -28,7 +28,7 @@
     }
   },
   "peerDependencies": {
-    "graph-memory": ">=1.6.0-beta.1",
+    "dsh-graphmemory": ">=0.1.0",
     "@deepseek-ai/cordis": ">=4",
     "@deepseek-ai/dsh-typert-protocol": ">=0.1.0-rc.5",
     "react": ">=18"

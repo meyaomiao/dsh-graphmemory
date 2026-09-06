@@ -1,7 +1,7 @@
 # Graph Memory × DeepSeek Harness 原生架构与 Pro 路线图
 
 > 更新：2026-09-04
-> Community 状态：`1.6.0-beta.12` 已完成 DSH 原生加载、滚动上下文接管、无安装脚本分发、可选原始消息保留策略与真实跨项目召回验证；重启回填/滚动压缩双读 `Session.events` 与 0.1.2 的 `snapshotEvents()` / `eventAt()`
+> Community 状态：npm 新包 `dsh-graphmemory@0.1.0`（代码谱系承接 `1.6.0-beta.12`）已完成 DSH 原生加载、滚动上下文接管、无安装脚本分发、可选原始消息保留策略与真实跨项目召回验证；重启回填/滚动压缩双读 `Session.events` 与 0.1.2 的 `snapshotEvents()` / `eventAt()`
 > Pro 状态：SQLite GraphSnapshot、DSH Host、Typed Remote 与只读 Client 已实现；2D/3D、分屏和拖拽尚未实现
 
 ## 1. 结论
