@@ -25,11 +25,22 @@ const output = execFileSync("npm", ["pack", "--dry-run", "--json"], {
   cwd: new URL("..", import.meta.url),
   encoding: "utf8",
 });
-const [report] = JSON.parse(output);
+// prepack prints build logs on stdout; npm --json is the first `[` / `{` after that.
+const jsonStart = output.search(/[\[{]/);
+if (jsonStart < 0) {
+  throw new Error(`npm pack --json produced no JSON:\n${output.slice(0, 400)}`);
+}
+const packed = JSON.parse(output.slice(jsonStart));
+const report = Array.isArray(packed) ? packed[0] : packed;
+if (!report?.files) {
+  throw new Error("npm pack --json did not include a files list");
+}
 const packedFiles = new Set(report.files.map((entry) => entry.path));
 for (const required of [
   "dist/index.js",
   "dist/dsh.js",
+  "dist/client.js",
+  "dist/standalone.js",
   "dist/src/store/sqlite.js",
   "index.ts",
   "dsh.ts",
