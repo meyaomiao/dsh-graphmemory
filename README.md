@@ -94,9 +94,28 @@ embedding:
 
 ## 📋 兼容性
 
-- DeepSeek Harness `0.1.2` 线（`Session.events` 与 `snapshotEvents()` / `eventAt()` 双读）
+| 版本线 | 状态 | 对应 DSH |
+|---|---|---|
+| **0.2.x** | ✅ 当前主线 | **DSH 0.1.5-rc.1+**(页签优先注册官方原生右侧栏;V3 会话格式) |
+| 0.1.x | 🔧 维护态(仅修 bug) | DSH 0.1.2 线(`Session.events` 与 `snapshotEvents()` / `eventAt()` 双读) |
+
+### 0.1.x → 0.2.x 功能变化
+
+- **页签宿主迁移**:DSH 0.1.5+ 上优先注册官方原生右侧栏(`ctx.sidebarRightTabs` + `sidebar.right.pane.tab` 座位),better-sidebar 降级为旧宿主回退;独立看板 `/graph-memory/app` 不变
+- **V3 会话格式**:ingest 四类型白名单(user/message、assistant/message、tool/result、request/header)对 V3 新事件形态天然前向安全,host 侧无需改码;snapshotEvents/eventAt 双读继续有效
+- `dsh.client.inject` 增加 `slots`;peer `dsh-typert-protocol` 补 `>=0.1.5-rc.1`
+- **无功能移除**:抽取/召回/维护/看板在新旧两线均可用
+
+其他:
+
 - Node.js `≥ 22.13`
-- 侧栏页签：`dsh-better-sidebar`（实测 0.18）
+- 旧宿主侧栏页签:`dsh-better-sidebar`(实测 0.18)
+
+## ⭐ 支持这个项目
+
+如果 Graph Memory 帮到了你,欢迎到 [GitHub 仓库](https://github.com/meyaomiao/dsh-graphmemory) 点个 Star ⭐,让更多 DSH 用户看到它。问题与功能建议请提 Issue。
+
+上游谱系：[adoresever/graph-memory](https://github.com/adoresever/graph-memory)。本仓是独立维护的 DSH 发行线。
 
 ## 🛠 开发
 
