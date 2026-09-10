@@ -111,7 +111,6 @@
     },
     "client": {
       "inject": [
-        "dsh-better-sidebar",
         "slots"
       ],
       "platform": "web"
