@@ -85,6 +85,19 @@ export interface ClientContext {
     warn(message: unknown, ...args: unknown[]): void;
   };
   effect(factory: () => (() => void) | void, label?: string): void;
+  /**
+   * 运行时服务等待(cordis Context 方法,非服务属性):DSH 0.1.5+ 用于
+   * 等待官方原生右侧栏服务 sidebarRightTabs。
+   */
+  inject?(
+    deps: readonly string[],
+    fn: (ctx: { get(name: string): unknown }) => (() => void) | void,
+  ): { dispose?: () => void };
+  /** 官方座位系统(DSH web client 核心服务;原生右侧栏内容体注册需要)。 */
+  readonly slots?: {
+    inject(name: string, fn: () => (() => void) | void): () => void;
+    register(spec: Record<string, unknown>, component: unknown): () => void;
+  };
 }
 
 /** 抽取管线健康度：由积压量与近期消化速率推导。 */
