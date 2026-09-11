@@ -103,7 +103,7 @@ embedding:
 
 - **页签宿主迁移**:DSH 0.1.5+ 上优先注册官方原生右侧栏(`ctx.sidebarRightTabs` + `sidebar.right.pane.tab` 座位),better-sidebar 降级为旧宿主回退;独立看板 `/graph-memory/app` 不变
 - **V3 会话格式**:ingest 四类型白名单(user/message、assistant/message、tool/result、request/header)对 V3 新事件形态天然前向安全,host 侧无需改码;snapshotEvents/eventAt 双读继续有效
-- `dsh.client.inject` 增加 `slots`;peer `dsh-typert-protocol` 补 `>=0.1.5-rc.1`
+- `dsh.client.inject` 增加 `slots`;`betterSidebar` 移出模块级 inject(0.1.5 宿主对「声明未提供」的模块不激活),legacy 访问改 try/catch 守卫——DSH 0.1.2 + better-sidebar 宿主上的 legacy 页签形态退化为独立看板兜底;peer `dsh-typert-protocol` 补 `>=0.1.5-rc.1`
 - **无功能移除**:抽取/召回/维护/看板在新旧两线均可用
 
 其他:

@@ -906,10 +906,15 @@ var CSS = `
   height: 100%;
   overflow: auto;
   padding: 16px;
-  background: var(--gm-bg);
+  /* \u900F\u660E\u6839:\u5B98\u65B9\u539F\u751F\u9762\u677F\u81EA\u5E26\u5E95\u8272(0.1.5 \u65B0\u8C03\u8272\u677F),\u4FA7\u680F\u573A\u666F\u4E0D\u906E\u4F4F\u5BBF\u4E3B;
+     \u72EC\u7ACB\u9875\u7531 .gm-standalone \u4FEE\u9970\u7C7B\u4FDD\u7559\u81EA\u6709\u80CC\u666F(\u88F8\u9875\u9762\u65E0\u5BBF\u4E3B\u4EE4\u724C)\u3002 */
+  background: transparent;
   color: var(--gm-text);
   font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   font-size: 12px;
+}
+.gm-standalone .gm-shell {
+  background: var(--gm-bg);
 }
 body[data-ds-dark-theme] .gm-shell {
   --gm-bg: #232324;
@@ -1085,7 +1090,7 @@ function installStyles() {
 
 // dashboard/client.ts
 var name = "graph-memory-dashboard";
-var inject = ["betterSidebar", "slots"];
+var inject = ["slots"];
 var NATIVE_ID = "dsh-graphmemory";
 var NATIVE_KIND = "graph-memory";
 function NativeBody() {
@@ -1148,7 +1153,12 @@ function apply(ctx) {
       }
     }
     if (!nativeActive) {
-      const sidebar = ctx.betterSidebar;
+      let sidebar;
+      try {
+        sidebar = ctx.betterSidebar;
+      } catch {
+        sidebar = void 0;
+      }
       if (!sidebar) {
         ctx.logger?.warn?.(
           "[graph-memory] \u5B98\u65B9\u539F\u751F\u680F\u4E0E better-sidebar \u5747\u672A\u5C31\u7EEA,\u9875\u7B7E\u672A\u6CE8\u518C;\u72EC\u7ACB\u770B\u677F\u4ECD\u53EF\u8BBF\u95EE /graph-memory/app"

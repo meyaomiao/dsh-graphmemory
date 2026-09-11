@@ -23,7 +23,7 @@ import { installStyles } from "./ui/styles.ts";
 
 const name = "graph-memory-dashboard";
 
-const inject = ["betterSidebar", "slots"];
+const inject = ["slots"];
 
 /** 官方原生右侧栏:本插件的实现 id(kind 的 openTab 名)。 */
 const NATIVE_ID = "dsh-graphmemory";
@@ -112,7 +112,12 @@ export function apply(ctx: ClientContext): void {
     // ---------- 形态一:better-sidebar 页签(旧宿主回退) ----------
     // 官方座位已同步注册 ⇒ 本形态让位(native 迟到时上面的仲裁负责切换)。
     if (!nativeActive) {
-      const sidebar = ctx.betterSidebar;
+      let sidebar: ClientContext["betterSidebar"];
+      try {
+        sidebar = ctx.betterSidebar;
+      } catch {
+        sidebar = undefined;
+      }
       if (!sidebar) {
         ctx.logger?.warn?.(
           "[graph-memory] 官方原生栏与 better-sidebar 均未就绪,页签未注册;独立看板仍可访问 /graph-memory/app",
