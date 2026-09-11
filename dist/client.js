@@ -1061,9 +1061,9 @@ body[data-ds-dark-theme] .gm-shell {
 .gm-progress { height: 6px; margin-top: 8px; overflow: hidden; border-radius: 99px; background: var(--gm-surface-strong); }
 .gm-progress > i { display: block; height: 100%; border-radius: 99px; background: var(--gm-skill); transition: width .5s ease; }
 .gm-progress-caption { margin-top: 6px; color: var(--gm-muted); font-size: 9px; }
-.gm-status-errors { display: grid; gap: 3px; margin-top: 6px; }
-.gm-status-error { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
-.gm-status-error-kind { min-width: 0; overflow: hidden; color: var(--gm-error); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.gm-status-errors { display: grid; gap: 3px; margin-top: 6px; min-width: 0; }
+.gm-status-error { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; min-width: 0; overflow: hidden; }
+.gm-status-error-kind { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--gm-error); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .gm-status-error-count { flex: 0 0 auto; color: var(--gm-muted); font-size: 9px; }
 .gm-status-offline { padding: 9px; border-radius: 8px; background: var(--gm-surface); color: var(--gm-muted); font-size: 10px; }
 @media (max-width: 330px) {
