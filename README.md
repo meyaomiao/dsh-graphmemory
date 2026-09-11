@@ -12,9 +12,26 @@
 
 *压缩管「这段对话还塞得下吗」；记忆图谱管「过去哪段知识现在值得想起来」。*
 
-**0.1.0** 新 npm 包名。看板并入本插件：better-sidebar「记忆图谱」页签、独立页 `/graph-memory/app`、运行概览。
+**0.2.x** 页签优先注册 DSH 官方原生右侧栏。
 
 </div>
+
+## ⭐ 欢迎点星收藏
+
+如果 Graph Memory 帮到了你，欢迎到 [GitHub 仓库](https://github.com/meyaomiao/dsh-graphmemory) 点个 Star ⭐，让更多 DSH 用户看到它。问题与建议请提 Issue。
+
+## 📋 兼容性
+
+| 插件版本 | 状态 | 对应 DSH |
+|---|---|---|
+| **0.2.x**（当前主线） | ✅ | **0.1.5-rc.1 / 0.1.5-rc.2**（及之后的 0.1.5 线；页签走官方原生右侧栏） |
+| 0.1.x | 🔧 维护态（仅修 bug） | DSH 0.1.2 线（`Session.events` 与 `snapshotEvents()` / `eventAt()` 双读） |
+
+### 本次升级功能变化
+
+- **页签宿主迁移**：DSH 0.1.5+ 优先注册官方原生右侧栏（`ctx.sidebarRightTabs`），better-sidebar 降为旧宿主回退；独立看板 `/graph-memory/app` 不变。
+- **官方已有的交给官方**：不画赞踩、不画交付文件卡。抽取 / 召回 / 看板新旧两线都在。
+- 会话 V3：ingest 白名单对 V3 事件形态前向安全；`snapshotEvents` / `eventAt` 双读继续有效。
 
 ---
 
@@ -91,12 +108,6 @@ embedding:
 - Client 入口 `dashboard/client.ts`：模块级 `inject = ['betterSidebar']`，`package.json dsh.client.inject` 声明 `dsh-better-sidebar`（加载顺序）。两层缺一，页签不会出现
 - 非 scoped 包的 patch `name` 必须是包根 `dsh-graphmemory`，不能写成 `dsh-graphmemory/dsh`（否则 client 被静默跳过）
 - OpenClaw 仍走 `exports["./openclaw"]` → `dist/index.js`
-
-## 📋 兼容性
-
-- DeepSeek Harness `0.1.2` 线（`Session.events` 与 `snapshotEvents()` / `eventAt()` 双读）
-- Node.js `≥ 22.13`
-- 侧栏页签：`dsh-better-sidebar`（实测 0.18）
 
 ## 🛠 开发
 
