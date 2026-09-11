@@ -1,6 +1,6 @@
 {
   "name": "dsh-graphmemory",
-  "version": "0.2.1",
+  "version": "0.2.0",
   "description": "Knowledge graph memory for DeepSeek Harness and OpenClaw — cross-session recall, PageRank, communities, and vector search",
   "keywords": [
     "deepseek-harness",
