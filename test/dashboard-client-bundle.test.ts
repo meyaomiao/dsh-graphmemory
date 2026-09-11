@@ -11,8 +11,8 @@ interface LoadedClient {
   };
 }
 
-describe("dashboard client bundle (better-sidebar tab)", () => {
-  it("registers 记忆图谱 with service inject betterSidebar", () => {
+describe("dashboard client bundle (native sidebar first, better-sidebar fallback)", () => {
+  it("ships slots-only inject (betterSidebar accessed via guarded read)", () => {
     let loaded: LoadedClient | undefined;
     runInNewContext(readFileSync(new URL("../dist/client.js", import.meta.url), "utf8"), {
       window: { __ModuleLoader__: { load: (entry: LoadedClient) => { loaded = entry; } } },
@@ -29,7 +29,9 @@ describe("dashboard client bundle (better-sidebar tab)", () => {
       if (id === "react" || id === "react/jsx-runtime") return react;
       throw new Error(`unexpected client external ${id}`);
     });
-    expect(plugin.inject).toEqual(["betterSidebar"]);
+    // 0.1.5 宿主:声明未提供服务的模块不激活,故 betterSidebar 不得进
+    // 模块级 inject;legacy 回退经 try/catch 守卫读取(见 dashboard/client.ts)。
+    expect(plugin.inject).toEqual(["slots"]);
     expect(plugin.name).toBe("graph-memory-dashboard");
 
     const registered: any[] = [];

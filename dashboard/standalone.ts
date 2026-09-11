@@ -13,5 +13,8 @@ import { installStyles } from "./ui/styles.ts";
 const container = document.getElementById("root");
 if (container) {
   installStyles();
+  // 独立页是裸页面(无宿主设计令牌),保留自有底色;侧栏场景的透明根
+  // 由官方原生面板提供背景。见 ui/styles.ts 的 .gm-standalone 规则。
+  container.classList.add("gm-standalone");
   createRoot(container).render(createElement(GraphMemoryApp, { visible: true }));
 }

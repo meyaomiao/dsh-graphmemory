@@ -906,10 +906,15 @@ var CSS = `
   height: 100%;
   overflow: auto;
   padding: 16px;
-  background: var(--gm-bg);
+  /* \u900F\u660E\u6839:\u5B98\u65B9\u539F\u751F\u9762\u677F\u81EA\u5E26\u5E95\u8272(0.1.5 \u65B0\u8C03\u8272\u677F),\u4FA7\u680F\u573A\u666F\u4E0D\u906E\u4F4F\u5BBF\u4E3B;
+     \u72EC\u7ACB\u9875\u7531 .gm-standalone \u4FEE\u9970\u7C7B\u4FDD\u7559\u81EA\u6709\u80CC\u666F(\u88F8\u9875\u9762\u65E0\u5BBF\u4E3B\u4EE4\u724C)\u3002 */
+  background: transparent;
   color: var(--gm-text);
   font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   font-size: 12px;
+}
+.gm-standalone .gm-shell {
+  background: var(--gm-bg);
 }
 body[data-ds-dark-theme] .gm-shell {
   --gm-bg: #232324;
@@ -1085,28 +1090,102 @@ function installStyles() {
 
 // dashboard/client.ts
 var name = "graph-memory-dashboard";
-var inject = ["betterSidebar"];
+var inject = ["slots"];
+var NATIVE_ID = "dsh-graphmemory";
+var NATIVE_KIND = "graph-memory";
+function NativeBody() {
+  return (0, import_react2.createElement)(GraphMemoryApp, { visible: true });
+}
+function NativeTitle() {
+  return "\u8BB0\u5FC6\u56FE\u8C31";
+}
 function apply(ctx) {
   ctx.effect(() => {
-    const sidebar = ctx.betterSidebar;
-    if (!sidebar) {
-      ctx.logger?.warn?.(
-        "[graph-memory] better-sidebar \u672A\u5B89\u88C5\uFF0C\u9875\u7B7E\u672A\u6CE8\u518C\uFF1B\u72EC\u7ACB\u770B\u677F\u4ECD\u53EF\u8BBF\u95EE /graph-memory/app"
-      );
-      return;
-    }
     const removeStyles = installStyles();
-    const dispose = sidebar.registerTab({
-      id: "graph-memory:graph",
-      title: () => "\u8BB0\u5FC6\u56FE\u8C31",
-      order: 56,
-      single: true,
-      icon: () => "\u2301",
-      component: ({ visible }) => (0, import_react2.createElement)(GraphMemoryApp, { visible })
-    });
+    let tabDispose = null;
+    let nativeActive = false;
+    let seatDispose;
+    if (typeof ctx.inject === "function") {
+      try {
+        const seat = ctx.inject(["sidebarRightTabs"], (injected) => {
+          const tabs = injected.get("sidebarRightTabs");
+          if (tabs === void 0 || typeof tabs.register !== "function") return;
+          try {
+            tabDispose?.();
+            tabDispose = null;
+          } catch {
+          }
+          const disposeType = tabs.register({
+            id: NATIVE_ID,
+            kind: NATIVE_KIND,
+            priority: "extension",
+            title: () => "\u8BB0\u5FC6\u56FE\u8C31",
+            guide: [{ order: 56, title: () => "\u8BB0\u5FC6\u56FE\u8C31" }]
+          });
+          const slots = ctx.slots;
+          const disposeSlots = [];
+          if (slots !== void 0) {
+            disposeSlots.push(
+              slots.inject("sidebar.right.pane.tab", () => slots.register({
+                name: "sidebar.right.pane.tab",
+                key: NATIVE_ID,
+                inject: (sessionId) => ({ sessionId })
+              }, NativeBody)),
+              slots.inject("sidebar.right.pane.tab.title", () => slots.register({
+                name: "sidebar.right.pane.tab.title",
+                key: NATIVE_ID,
+                inject: () => ({})
+              }, NativeTitle))
+            );
+          } else {
+            ctx.logger?.warn?.("[graph-memory] ctx.slots \u4E0D\u53EF\u7528,\u539F\u751F\u5185\u5BB9\u4F53\u672A\u6CE8\u518C");
+          }
+          nativeActive = true;
+          return () => {
+            for (const dispose of disposeSlots.reverse()) dispose();
+            disposeType();
+            nativeActive = false;
+          };
+        });
+        seatDispose = typeof seat?.dispose === "function" ? () => seat.dispose?.() : void 0;
+      } catch (error) {
+        ctx.logger?.warn?.("[graph-memory] \u539F\u751F\u53F3\u4FA7\u680F\u7B49\u5F85\u542F\u52A8\u5931\u8D25:", error);
+      }
+    }
+    if (!nativeActive) {
+      let sidebar;
+      try {
+        sidebar = ctx.betterSidebar;
+      } catch {
+        sidebar = void 0;
+      }
+      if (!sidebar) {
+        ctx.logger?.warn?.(
+          "[graph-memory] \u5B98\u65B9\u539F\u751F\u680F\u4E0E better-sidebar \u5747\u672A\u5C31\u7EEA,\u9875\u7B7E\u672A\u6CE8\u518C;\u72EC\u7ACB\u770B\u677F\u4ECD\u53EF\u8BBF\u95EE /graph-memory/app"
+        );
+        return () => {
+          removeStyles();
+          seatDispose?.();
+        };
+      }
+      try {
+        tabDispose = sidebar.registerTab({
+          id: "graph-memory:graph",
+          title: () => "\u8BB0\u5FC6\u56FE\u8C31",
+          order: 56,
+          single: true,
+          icon: () => "\u2301",
+          component: ({ visible }) => (0, import_react2.createElement)(GraphMemoryApp, { visible })
+        }) ?? null;
+      } catch (error) {
+        ctx.logger?.warn?.("[graph-memory] registerTab \u5931\u8D25:", error);
+        tabDispose = null;
+      }
+    }
     return () => {
-      dispose();
+      tabDispose?.();
       removeStyles();
+      seatDispose?.();
     };
   }, "graph-memory: register dashboard tab");
 }

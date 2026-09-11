@@ -18,10 +18,15 @@ const CSS = `
   height: 100%;
   overflow: auto;
   padding: 16px;
-  background: var(--gm-bg);
+  /* 透明根:官方原生面板自带底色(0.1.5 新调色板),侧栏场景不遮住宿主;
+     独立页由 .gm-standalone 修饰类保留自有背景(裸页面无宿主令牌)。 */
+  background: transparent;
   color: var(--gm-text);
   font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   font-size: 12px;
+}
+.gm-standalone .gm-shell {
+  background: var(--gm-bg);
 }
 body[data-ds-dark-theme] .gm-shell {
   --gm-bg: #232324;
